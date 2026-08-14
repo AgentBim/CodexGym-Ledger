@@ -11,6 +11,8 @@ import {
   saveSessionSchema,
   saveStudentSchema,
   saveTemplateSchema,
+  previewTemplateScheduleSchema,
+  saveTemplateScheduleSchema,
   undoOperationSchema,
 } from "@/lib/validation/mutations";
 import type { Json } from "@/lib/supabase/database.types";
@@ -154,6 +156,43 @@ export async function saveTemplate(input: unknown): Promise<MutationResult> {
     p_paused: parsed.data.paused,
     p_archived: parsed.data.archived,
     p_expected_version: parsed.data.expectedVersion ?? null,
+  });
+  return error ? databaseFailure(error) : { ok: true, data };
+}
+
+export async function previewTemplateSchedule(input: unknown): Promise<MutationResult> {
+  const parsed = previewTemplateScheduleSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const auth = await authenticatedClient();
+  if (!("supabase" in auth)) return auth;
+  const { data, error } = await auth.supabase.rpc("preview_template_schedule", {
+    p_template_id: parsed.data.templateId,
+    p_weekday: parsed.data.weekday,
+    p_starts_on: parsed.data.startsOn,
+    p_ends_on: parsed.data.endsOn ?? null,
+    p_expected_version: parsed.data.expectedVersion,
+  });
+  return error ? databaseFailure(error) : { ok: true, data };
+}
+
+export async function saveTemplateSchedule(input: unknown): Promise<MutationResult> {
+  const parsed = saveTemplateScheduleSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const auth = await authenticatedClient();
+  if (!("supabase" in auth)) return auth;
+  const request = { ...parsed.data, idempotencyKey: undefined, endsOn: parsed.data.endsOn ?? null };
+  const { data, error } = await auth.supabase.rpc("save_template_schedule", {
+    p_idempotency_key: parsed.data.idempotencyKey,
+    p_request_hash: hashRequest(request),
+    p_template_id: parsed.data.templateId,
+    p_student_id: parsed.data.studentId,
+    p_weekday: parsed.data.weekday,
+    p_starts_on: parsed.data.startsOn,
+    p_ends_on: parsed.data.endsOn ?? null,
+    p_paused: parsed.data.paused,
+    p_archived: parsed.data.archived,
+    p_expected_version: parsed.data.expectedVersion,
+    p_future_mode: parsed.data.futureMode,
   });
   return error ? databaseFailure(error) : { ok: true, data };
 }

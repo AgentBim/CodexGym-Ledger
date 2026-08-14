@@ -62,6 +62,20 @@ export const saveTemplateSchema = z.object({
   }
 });
 
+export const previewTemplateScheduleSchema = z.object({
+  templateId: z.uuid(),
+  weekday: z.int().min(1).max(7),
+  startsOn: isoDate,
+  endsOn: isoDate.nullable().optional(),
+  expectedVersion: z.int().min(1),
+}).strict().refine(({ startsOn, endsOn }) => endsOn == null || endsOn >= startsOn, { path: ["endsOn"], message: "End date must be on or after the start date." });
+
+export const saveTemplateScheduleSchema = saveTemplateSchema.safeExtend({
+  templateId: z.uuid(),
+  expectedVersion: z.int().min(1),
+  futureMode: z.enum(["keep", "update"]),
+});
+
 export const saveSessionSchema = z.object({
   idempotencyKey,
   sessionId: z.uuid().nullable().optional(),

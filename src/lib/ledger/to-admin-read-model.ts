@@ -100,6 +100,12 @@ export function toAdultAdminReadModel(dashboard: LedgerDashboard): AdultAdminRea
         version: template.version,
       };
     }),
+    setup: {
+      student: dashboard.students.length > 0,
+      template: dashboard.templates.some((template) => !template.archivedAt),
+      attendance: dashboard.sessions.some((session) => !session.voidedAt && session.status === "held"),
+      payment: dashboard.payments.some((payment) => !payment.voidedAt),
+    },
     review: {
       date: dashboard.dayRecap.date,
       reviewed: Boolean(dashboard.dayRecap.reviewedAt),

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdultAdminApp, EMPTY_ADULT_ADMIN_DATA, type AdultAdminReadModel } from "./adult-admin-app";
-import { bulkMarkAttended, correctPayment, logPayment, materializeRecurringSessions, saveSession, saveStudent, saveTemplate, undoOperation } from "../actions/ledger";
+import { bulkMarkAttended, correctPayment, logPayment, materializeRecurringSessions, previewTemplateSchedule, saveSession, saveStudent, saveTemplate, saveTemplateSchedule, undoOperation } from "../actions/ledger";
 
 const refresh = vi.fn();
 const push = vi.fn();
@@ -14,9 +14,11 @@ vi.mock("../actions/ledger", () => ({
   logPayment: vi.fn(),
   markDailyReviewed: vi.fn(),
   materializeRecurringSessions: vi.fn(),
+  previewTemplateSchedule: vi.fn(),
   saveSession: vi.fn(),
   saveStudent: vi.fn(),
   saveTemplate: vi.fn(),
+  saveTemplateSchedule: vi.fn(),
   undoOperation: vi.fn(),
 }));
 
@@ -37,6 +39,7 @@ const data: AdultAdminReadModel = {
     { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentName: "Asha Clarke", label: "BBD $30.00 payment", detail: "Cash", entry: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentId: "11111111-1111-4111-8111-111111111111", studentName: "Asha Clarke", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false, version: 1, amountCents: 3000, method: "cash" } },
   ],
   templates: [],
+  setup: { student: true, template: false, attendance: true, payment: true },
   review: { date: "2026-07-31", reviewed: false, heldCount: 1, noShowCount: 0, collectedCents: 3000, scheduledCount: 1 },
   period: { label: "July summary", totalOwedCents: 6000, totalCreditCents: 1000, attendanceCount: 12, collectedCents: 9000 },
 };
@@ -50,6 +53,8 @@ describe("AdultAdminApp", () => {
     vi.mocked(undoOperation).mockResolvedValue({ ok: true, data: { operationId: "55555555-5555-4555-8555-555555555555" } });
     vi.mocked(saveStudent).mockResolvedValue({ ok: true, data: { operationId: "66666666-6666-4666-8666-666666666666" } });
     vi.mocked(saveTemplate).mockResolvedValue({ ok: true, data: { operationId: "77777777-7777-4777-8777-777777777777" } });
+    vi.mocked(previewTemplateSchedule).mockResolvedValue({ ok: true, data: { templateId: "template", expectedVersion: 3, oldSchedule: { weekday: 1, startsOn: "2026-07-01", endsOn: null }, newSchedule: { weekday: 2, startsOn: "2026-07-01", endsOn: null }, affectedCount: 2, excludedCount: 1, conflictCount: 0, changes: [] } });
+    vi.mocked(saveTemplateSchedule).mockResolvedValue({ ok: true, data: { operationId: "78787878-7878-4787-8787-787878787878" } });
     vi.mocked(materializeRecurringSessions).mockResolvedValue({ ok: true, data: { operationId: "88888888-8888-4888-8888-888888888888" } });
     vi.mocked(saveSession).mockResolvedValue({ ok: true, data: { operationId: "99999999-9999-4999-8999-999999999999" } });
   });
@@ -180,9 +185,13 @@ describe("AdultAdminApp", () => {
     expect(screen.getByRole("dialog", { name: "Manage recurring class" })).toBeInTheDocument();
     expect(screen.getByLabelText("Weekday")).toHaveValue("5");
     fireEvent.change(screen.getByLabelText("Weekday"), { target: { value: "2" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    expect(await screen.findByText("Change preview")).toBeInTheDocument();
+    expect(screen.getByText("Affected sessions")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Update eligible sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm changes" }));
 
-    await waitFor(() => expect(saveTemplate).toHaveBeenCalledWith(expect.objectContaining({ templateId: template.id, weekday: 2, expectedVersion: 3 })));
+    await waitFor(() => expect(saveTemplateSchedule).toHaveBeenCalledWith(expect.objectContaining({ templateId: template.id, weekday: 2, expectedVersion: 3, futureMode: "update" })));
   });
 
   it("logs a dated manual session and offers database-backed undo", async () => {

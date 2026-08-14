@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { bulkMarkAttended, correctPayment, logPayment, markDailyReviewed, saveSession, saveStudent, saveTemplate, materializeRecurringSessions, undoOperation, type MutationResult } from "../actions/ledger";
+import { bulkMarkAttended, correctPayment, logPayment, markDailyReviewed, previewTemplateSchedule, saveSession, saveStudent, saveTemplate, saveTemplateSchedule, materializeRecurringSessions, undoOperation, type MutationResult } from "../actions/ledger";
 import { signOut } from "../actions/auth";
 
 type View = "today" | "students" | "activity" | "more";
@@ -71,6 +71,17 @@ export type TemplateReadModel = {
   version: number;
 };
 
+export type TemplatePreviewReadModel = {
+  templateId: string;
+  expectedVersion: number;
+  oldSchedule: { weekday: number; startsOn: string; endsOn: string | null };
+  newSchedule: { weekday: number; startsOn: string; endsOn: string | null };
+  affectedCount: number;
+  excludedCount: number;
+  conflictCount: number;
+  changes: { sessionId: string; oldDate: string; newDate: string }[];
+};
+
 export type AdultAdminReadModel = {
   todayDate: string;
   todayLabel: string;
@@ -78,6 +89,7 @@ export type AdultAdminReadModel = {
   activities: ActivityReadModel[];
   dailyEntries: DailyEntryReadModel[];
   templates: TemplateReadModel[];
+  setup: { student: boolean; template: boolean; attendance: boolean; payment: boolean };
   review: {
     date: string;
     reviewed: boolean;
@@ -102,6 +114,7 @@ export const EMPTY_ADULT_ADMIN_DATA: AdultAdminReadModel = {
   activities: [],
   dailyEntries: [],
   templates: [],
+  setup: { student: false, template: false, attendance: false, payment: false },
   review: { date: "", reviewed: false, heldCount: 0, noShowCount: 0, collectedCents: 0, scheduledCount: 0 },
   period: { label: "Current period", totalOwedCents: 0, totalCreditCents: 0, attendanceCount: 0, collectedCents: 0 },
 };
@@ -385,7 +398,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setNotice(null);
     setIsPending(true);
     try {
-      const result = await saveTemplate({
+      const input = {
         idempotencyKey: freshIdempotencyKey(),
         templateId: editingTemplate?.id ?? null,
         studentId: String(form.get("student")),
@@ -395,7 +408,10 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
         paused: editingTemplate?.paused ?? false,
         archived: false,
         expectedVersion: editingTemplate?.version ?? null,
-      });
+      };
+      const result = editingTemplate
+        ? await saveTemplateSchedule({ ...input, templateId: editingTemplate.id, expectedVersion: editingTemplate.version, futureMode: String(form.get("futureMode") ?? "keep") })
+        : await saveTemplate(input);
       const error = resultMessage(result);
       if (error) return setNotice(error);
 
@@ -463,7 +479,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
         <header className="topbar"><Brand /><span className="save-state"><i /> {isPending ? "Saving…" : "All changes saved"}</span></header>
         <main id="main-content" className="main-content">
           {notice && <div className="review-state app-notice" role="status"><span aria-hidden="true">!</span><div><b>{notice}</b></div><button className="text-button" onClick={() => setNotice(null)}>Dismiss</button></div>}
-          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={viewStudent} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} />}
+          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={viewStudent} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => setView("more")} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
           {view === "activity" && <Activity data={data} onDateChange={(date) => router.push(`/?view=activity&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => setView("today")} isPending={isPending} />}
           {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setModal("template"); }} />}
@@ -491,17 +507,34 @@ function PageHeading({ eyebrow, title, children }: { eyebrow: string; title: str
 function Balance({ student }: { student: StudentReadModel }) { return <span className={`balance ${student.balanceState}`}><span aria-hidden="true">{student.balanceState === "overdue" ? "▲" : student.balanceState === "credit" ? "↓" : student.balanceState === "settled" ? "✓" : "○"}</span>{balanceLabel(student)}</span>; }
 function Status({ value }: { value: SessionStatus | null }) { return <span className={`status ${(value ?? "unscheduled").replace("_", "")}`}>{statusLabel(value)}</span>; }
 
-function Today({ data, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue }: { data: AdultAdminReadModel; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void }) {
+function Today({ data, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue, onTemplates }: { data: AdultAdminReadModel; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void; onTemplates: () => void }) {
   const overdueCount = data.students.filter((student) => student.balanceState === "overdue").length;
   const scheduledCount = data.students.filter((student) => student.todaySessionStatus === "scheduled").length;
   const heldCount = data.students.filter((student) => student.todaySessionStatus === "held").length;
   return <><PageHeading eyebrow={data.todayLabel} title="Today" />
+    <SetupChecklist setup={data.setup} onAddStudent={onAddStudent} onTemplates={onTemplates} onAttendance={onBulk} onPayment={() => onPay()} />
     {overdueCount > 0 && <button className="alert-card" onClick={onShowOverdue}><span aria-hidden="true">!</span><b>{overdueCount} {overdueCount === 1 ? "student is" : "students are"} overdue</b><small>View outstanding balances →</small></button>}
     <section className="section"><div className="section-title"><div><p className="eyebrow">Today’s class</p><h2>{scheduledCount} scheduled · {heldCount} held</h2></div><div className="section-actions"><button className="secondary" disabled={!data.students.length} onClick={onSession}>+ Session</button><button className="secondary" disabled={!data.students.length} onClick={() => onPay()}>+ Payment</button></div></div>
       {data.students.length ? <div className="student-list">{data.students.map((student) => <article className="student-row" key={student.id}><button className="student-open" onClick={() => onView(student)} aria-label={`View ${student.name}`}><span className="avatar" aria-hidden="true">{student.name.split(" ").map((part) => part[0]).join("")}</span><span className="student-copy"><strong>{student.name}</strong><Balance student={student} /></span></button><button className="quick-pay" onClick={() => onPay(student.id)} aria-label={`Record payment for ${student.name}`}>Pay</button><Status value={student.todaySessionStatus} /></article>)}</div> : <EmptyLedger onAdd={onAddStudent} />}
     </section>
     <section className="section recent"><div className="section-title"><h2>Recent activity</h2></div>{data.activities.length ? data.activities.slice(0, 3).map((activity) => <div className="activity-row" key={activity.id}><span className="activity-icon">✓</span><span>{activity.label}<small>{activity.occurredAtLabel}</small></span></div>) : <div className="empty"><b>No activity yet</b><p>Attendance and payments will appear here after you log them.</p></div>}</section>
     <div className="sticky-action"><button className="primary" disabled={!data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> Mark attendance</button></div></>;
+}
+
+const SETUP_DISMISSAL_KEY = "chalktab:setup:v1:dismissed";
+const SETUP_DISMISSAL_EVENT = "chalktab-setup-dismissed";
+function SetupChecklist({ setup, onAddStudent, onTemplates, onAttendance, onPayment }: { setup: AdultAdminReadModel["setup"]; onAddStudent: () => void; onTemplates: () => void; onAttendance: () => void; onPayment: () => void }) {
+  const dismissed = useSyncExternalStore(
+    (notify) => { window.addEventListener(SETUP_DISMISSAL_EVENT, notify); return () => window.removeEventListener(SETUP_DISMISSAL_EVENT, notify); },
+    () => window.localStorage.getItem(SETUP_DISMISSAL_KEY) === "true",
+    () => true,
+  );
+  const steps = [
+    ["student", "Add student", onAddStudent], ["template", "Create recurring class", onTemplates],
+    ["attendance", "Record attendance", onAttendance], ["payment", "Record payment", onPayment],
+  ] as const;
+  if (dismissed || Object.values(setup).every(Boolean)) return null;
+  return <section className="setup-card" aria-label="Setup checklist"><div className="section-title"><div><p className="eyebrow">Getting started</p><h2>Finish setting up ChalkTab</h2></div><button className="icon-button" aria-label="Dismiss setup checklist" onClick={() => { window.localStorage.setItem(SETUP_DISMISSAL_KEY, "true"); window.dispatchEvent(new Event(SETUP_DISMISSAL_EVENT)); }}>×</button></div><ol>{steps.map(([key, label, action]) => <li className={setup[key] ? "done" : ""} key={key}><span aria-hidden="true">{setup[key] ? "✓" : "○"}</span><button disabled={setup[key]} onClick={action}>{label}</button></li>)}</ol></section>;
 }
 
 function EmptyLedger({ onAdd }: { onAdd: () => void }) { return <div className="empty"><b>Your ledger is ready</b><p>Add your first student to start tracking attendance and payments. No demo records have been added.</p><button className="primary compact" onClick={onAdd}>Add first student</button></div>; }
@@ -604,7 +637,21 @@ function ArchiveStudentDialog({ student, onClose, onConfirm, isPending }: { stud
 const weekdays = [[1, "Monday"], [2, "Tuesday"], [3, "Wednesday"], [4, "Thursday"], [5, "Friday"], [6, "Saturday"], [7, "Sunday"]] as const;
 function TemplateDialog({ template, students, defaultDate, onClose, onSubmit, onToggle, onArchive, isPending }: { template: TemplateReadModel | null; students: StudentReadModel[]; defaultDate: string; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onToggle?: () => void; onArchive?: () => void; isPending: boolean }) {
   const startsOn = template?.startsOn ?? defaultDate;
-  return <DialogShell title={template ? "Manage recurring class" : "New recurring class"} description={template ? "Update the schedule or pause future session generation. Existing sessions stay unchanged." : "Create a weekly template and schedule its upcoming sessions."} onClose={onClose}><form onSubmit={onSubmit} className="entry-form"><label>Student<select name="student" defaultValue={template?.studentId ?? students[0]?.id} required>{students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}</select></label><label>Weekday<select name="weekday" defaultValue={String(template?.weekday ?? 1)}>{weekdays.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Starts on<input name="startsOn" type="date" defaultValue={startsOn} required /></label><label>Ends on (optional)<input name="endsOn" type="date" min={startsOn} defaultValue={template?.endsOn ?? ""} /></label>{template && <div className="template-controls"><button type="button" className="secondary" disabled={isPending} onClick={onToggle}>{template.paused ? "Resume recurring class" : "Pause recurring class"}</button><button type="button" className="danger" disabled={isPending} onClick={onArchive}>Archive</button></div>}<div className="sheet-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={isPending || !students.length} type="submit">{isPending ? "Saving…" : template ? "Save changes" : "Create recurring class"}</button></div></form></DialogShell>;
+  const [preview, setPreview] = useState<TemplatePreviewReadModel | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!template || preview) return onSubmit(event);
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setPreviewing(true); setPreviewError(null);
+    const result = await previewTemplateSchedule({ templateId: template.id, weekday: Number(form.get("weekday")), startsOn: String(form.get("startsOn")), endsOn: String(form.get("endsOn") ?? "") || null, expectedVersion: template.version });
+    setPreviewing(false);
+    const error = resultMessage(result);
+    if (error) return setPreviewError(error);
+    if (result.ok) setPreview(result.data as unknown as TemplatePreviewReadModel);
+  }
+  return <DialogShell title={template ? "Manage recurring class" : "New recurring class"} description={template ? "Review schedule effects before anything changes." : "Create a weekly template and schedule its upcoming sessions."} onClose={onClose}><form onSubmit={handleSubmit} className="entry-form">{previewError && <p className="form-error" role="alert">{previewError}</p>}{template && <input type="hidden" name="student" value={template.studentId} />}{preview && <><input type="hidden" name="weekday" value={preview.newSchedule.weekday} /><input type="hidden" name="startsOn" value={preview.newSchedule.startsOn} /><input type="hidden" name="endsOn" value={preview.newSchedule.endsOn ?? ""} /></>}<label>Student<select name="student" defaultValue={template?.studentId ?? students[0]?.id} disabled={Boolean(template)} required>{students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}</select></label><label>Weekday<select name="weekday" defaultValue={String(template?.weekday ?? 1)} disabled={Boolean(preview)}>{weekdays.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Starts on<input name="startsOn" type="date" defaultValue={startsOn} disabled={Boolean(preview)} required /></label><label>Ends on (optional)<input name="endsOn" type="date" min={startsOn} defaultValue={template?.endsOn ?? ""} disabled={Boolean(preview)} /></label>{preview && <section className="template-preview" aria-live="polite"><p className="eyebrow">Change preview</p><h3>{weekdays.find(([value]) => value === preview.oldSchedule.weekday)?.[1]} → {weekdays.find(([value]) => value === preview.newSchedule.weekday)?.[1]}</h3><dl><div><dt>Affected sessions</dt><dd>{preview.affectedCount}</dd></div><div><dt>Excluded sessions</dt><dd>{preview.excludedCount}</dd></div><div><dt>Conflicts</dt><dd className={preview.conflictCount ? "danger-text" : ""}>{preview.conflictCount}</dd></div></dl><label><span><input type="radio" name="futureMode" value="keep" defaultChecked /> Keep existing sessions</span></label><label><span><input type="radio" name="futureMode" value="update" disabled={preview.conflictCount > 0} /> Update eligible sessions</span></label>{preview.conflictCount > 0 && <p className="form-error">Resolve conflicts before updating eligible sessions.</p>}</section>}{template && !preview && <div className="template-controls"><button type="button" className="secondary" disabled={isPending} onClick={onToggle}>{template.paused ? "Resume recurring class" : "Pause recurring class"}</button><button type="button" className="danger" disabled={isPending} onClick={onArchive}>Archive</button></div>}<div className="sheet-actions"><button type="button" className="secondary" onClick={preview ? () => setPreview(null) : onClose}>{preview ? "Back" : "Cancel"}</button><button className="primary" disabled={isPending || previewing || !students.length} type="submit">{isPending ? "Saving…" : previewing ? "Previewing…" : template ? preview ? "Confirm changes" : "Review changes" : "Create recurring class"}</button></div></form></DialogShell>;
 }
 
 function ArchiveTemplateDialog({ template, onClose, onConfirm, isPending }: { template: TemplateReadModel; onClose: () => void; onConfirm: () => void; isPending: boolean }) {

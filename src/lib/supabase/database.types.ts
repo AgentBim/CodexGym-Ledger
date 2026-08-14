@@ -392,6 +392,32 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      preview_template_schedule: {
+        Args: {
+          p_ends_on: string | null
+          p_expected_version: number
+          p_starts_on: string
+          p_template_id: string
+          p_weekday: number
+        }
+        Returns: Json
+      }
+      save_template_schedule: {
+        Args: {
+          p_archived: boolean
+          p_ends_on: string | null
+          p_expected_version: number
+          p_future_mode: string
+          p_idempotency_key: string
+          p_paused: boolean
+          p_request_hash: string
+          p_starts_on: string
+          p_student_id: string
+          p_template_id: string
+          p_weekday: number
+        }
+        Returns: Json
+      }
       bulk_mark_attended: {
         Args: {
           p_idempotency_key: string
