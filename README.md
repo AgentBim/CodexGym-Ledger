@@ -1,10 +1,12 @@
-# Adult Gym Admin
+# ChalkTab
 
 Mobile-first Next.js app for adult gymnastics attendance and per-session BBD payments, backed by Supabase and intended for Vercel.
 
+For the complete implementation history, current status, verified evidence, known issues, and next actions, see [docs/development-progress.md](docs/development-progress.md).
+
 ## Current status
 
-This repository is **not release-ready**. The UI still uses an in-memory demo adapter, several audited mutation RPCs are incomplete, the SQL is an unapplied draft, and the executable QA suite is blocked until dependencies are repaired. Do not enter real student/payment data or deploy this build.
+The Supabase schema and audited mutation contract are applied, and the UI reads and mutates centrally stored data through authenticated server code. Hardcoded demo people have been removed; a new account starts with an empty ledger. The production app is live at [chalktab.vercel.app](https://chalktab.vercel.app).
 
 ## Local setup
 
@@ -40,4 +42,4 @@ Use separate Supabase projects/keys for preview and production. `.env.local`, `.
 
 ## Release controls
 
-No database migration has been approved or applied. The proposal at `supabase/migrations/draft_initial_schema.sql` is deliberately non-timestamped. Database migration, preview deployment, and production promotion each require separate explicit confirmation. See [docs/deployment-runbook.md](docs/deployment-runbook.md) for evidence and rollback requirements.
+The approved database migrations are timestamped under `supabase/migrations/` and recorded in the target project. Future schema changes and production promotions require explicit review. See [docs/deployment-runbook.md](docs/deployment-runbook.md) for evidence and rollback requirements.

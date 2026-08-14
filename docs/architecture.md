@@ -4,7 +4,7 @@
 
 Build this as a standalone Next.js App Router application backed by Supabase Auth and Postgres and hosted on Vercel. The domain is small, financially sensitive, and unrelated to the regular gymnast roster; a separate project minimizes accidental coupling and permissions. Supabase is the system of record. Browser storage may retain unsaved form input but is never authoritative.
 
-This document accompanies `supabase/migrations/draft_initial_schema.sql`. That file is a proposal only: it is deliberately non-timestamped, has not been applied, and must be converted into a real CLI-created migration only after explicit approval.
+This document accompanies the timestamped migrations under `supabase/migrations/`. They were applied to Supabase project `mevsairosejypqqtfnum` after explicit approval and verified with Security/Performance Advisors plus transaction-rolled-back RLS tests.
 
 ## Runtime boundaries
 
@@ -74,9 +74,9 @@ Supabase JS cannot wrap arbitrary client-side calls in one transaction. Therefor
 
 ## RLS and privileges
 
-RLS is enabled and forced on every public table. Policies target `authenticated` and use `(select auth.uid()) = owner_id`; updates have both `USING` and `WITH CHECK`. `owner_id` is immutable in the application contract. There are no anonymous policies. The draft explicitly grants only required table privileges to `authenticated` and grants none to `anon`; RLS is row authorization, while grants control Data API exposure.
+RLS is enabled and forced on every public table. Policies target `authenticated` and use `(select auth.uid()) = owner_id`; updates have both `USING` and `WITH CHECK`. `owner_id` is immutable in the application contract. There are no anonymous policies. The applied migrations explicitly grant only required privileges to `authenticated` and grant none to `anon`; RLS is row authorization, while grants control Data API exposure.
 
-Application queries must use the signed-in user's Supabase client. Never authorize from user-editable metadata. Cross-user denial tests are mandatory for select, insert, update, and any RPC. Audit events should be append-only through mutation RPCs in the final migration; the broad draft insert grant is temporary scaffolding and is identified as a migration risk below.
+Application queries use the signed-in user's Supabase client. Authorization never relies on user-editable metadata. Audit events are append-only through mutation RPCs, and direct authenticated table writes are denied.
 
 ## Query and index plan
 
@@ -98,12 +98,10 @@ After a mutation returns committed data, invalidate the affected student, today/
 
 ## Backend handoff
 
-1. Review the draft SQL and turn it into a real migration with `supabase migration new` only after explicit user approval.
-2. Implement transaction RPCs for create/update/void, bulk attendance, recurrence generation, correction, and undo; return typed result envelopes including conflicts and affected versions.
-3. Make audit insertion inaccessible as a standalone client operation once RPCs exist.
-4. Add security-invoker reporting queries/views and typed server repository functions.
-5. Test constraints, rate snapshots, cross-owner denial, idempotency replay/conflict, stale versions, deterministic bulk conflicts, recurrence boundaries, and undo expiry/staleness.
-6. Run Supabase database/security advisors against a local or approved target before applying anything.
+1. Keep future schema changes in reviewed, timestamped, forward-only migrations and obtain target-specific approval before applying them.
+2. Preserve the typed audited RPC envelopes, direct-write denial, RLS ownership predicates, and append-only audit history.
+3. Extend integration coverage for concurrency, recurrence boundaries, correction/void screens, and Undo expiry/staleness before production promotion.
+4. Run Supabase database/security advisors after every approved schema change.
 
 ## Frontend handoff
 
@@ -117,12 +115,11 @@ After a mutation returns committed data, invalidate the affected student, today/
 
 ## Migration and operational risks
 
-- **No migration has been applied.** The draft is intentionally not executable through normal timestamp ordering.
-- Mutation RPCs and their exact grants are not yet in the draft. Applying table DDL alone would leave an incomplete audit/undo contract.
+- The initial schema and composite foreign-key index migrations are applied to project `mevsairosejypqqtfnum` and recorded in migration history.
+- Mutation RPCs and their exact grants are live. Runtime checks verified cross-owner read isolation and denial of authenticated direct table writes; end-to-end browser tests with the coach account remain a release gate.
 - `gen_random_uuid()` availability and the hosted Postgres version must be verified in the approved environment.
 - Final grants depend on Supabase Data API exposure settings; verify rather than assuming new tables are reachable.
 - RLS tests must use genuine distinct authenticated JWT contexts; testing as `postgres` or service role bypasses the intended boundary.
 - Recurrence generation around year boundaries and Barbados date derivation need database integration tests.
 - Backups/PITR availability depends on the selected Supabase plan. Document and rehearse restore before production financial use.
 - Schema rollback must be forward-only and data-preserving; do not roll back by dropping ledger/audit tables after real data exists.
-

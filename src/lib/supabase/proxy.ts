@@ -12,11 +12,11 @@ export async function refreshSupabaseSession(request: NextRequest, requestHeader
   const supabase = createServerClient<Database>(url, key, {
     cookies: {
       getAll: () => request.cookies.getAll(),
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet, headers) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request: { headers: requestHeaders } });
         cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-        response.headers.set("Cache-Control", "private, no-store");
+        Object.entries(headers).forEach(([name, value]) => response.headers.set(name, value));
       },
     },
   });
