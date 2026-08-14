@@ -34,12 +34,16 @@ const data: AdultAdminReadModel = {
     { id: "33333333-3333-4333-8333-333333333333", name: "Ana Griffith", balanceCents: 0, balanceState: "settled", todaySessionStatus: "canceled", lastAttendedOn: null, defaultRateCents: 3000, notes: null, version: 1 },
   ],
   activities: [],
+  timeline: [
+    { id: "timeline-payment", kind: "payment", studentId: "11111111-1111-4111-8111-111111111111", studentName: "Asha Clarke", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", entry: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentId: "11111111-1111-4111-8111-111111111111", studentName: "Asha Clarke", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false, version: 1, amountCents: 3000, method: "cash" } },
+  ],
   dailyEntries: [
     { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "session", studentName: "Joel Best", label: "Held", detail: "BBD $25.00 charge", entry: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "session", studentId: "22222222-2222-4222-8222-222222222222", studentName: "Joel Best", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "Held session", detail: "BBD $25.00 charge", voided: false, version: 2, status: "held", chargeRateCents: 2500 } },
     { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentName: "Asha Clarke", label: "BBD $30.00 payment", detail: "Cash", entry: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentId: "11111111-1111-4111-8111-111111111111", studentName: "Asha Clarke", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false, version: 1, amountCents: 3000, method: "cash" } },
   ],
   templates: [],
   setup: { student: true, template: false, attendance: true, payment: true },
+  insights: { unresolvedSessions: 1, recentPayments: 1, upcomingClasses: 2, inactiveStudents: 1 },
   review: { date: "2026-07-31", reviewed: false, heldCount: 1, noShowCount: 0, collectedCents: 3000, scheduledCount: 1 },
   period: { label: "July summary", totalOwedCents: 6000, totalCreditCents: 1000, attendanceCount: 12, collectedCents: 9000 },
 };
@@ -132,7 +136,8 @@ describe("AdultAdminApp", () => {
   it("requires confirmation before archiving a student", async () => {
     render(<AdultAdminApp data={data} />);
     fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
-    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]!);
+    fireEvent.click(screen.getByLabelText("More actions for Asha Clarke"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage student" })[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Archive student" }));
     expect(screen.getByRole("dialog", { name: /archive Asha Clarke/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Archive student" }));
@@ -236,8 +241,9 @@ describe("AdultAdminApp", () => {
     render(<AdultAdminApp data={{ ...data, students: [...data.students.slice(0, 2), archived] }} />);
     fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Archived" }));
-    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    fireEvent.click(screen.getByLabelText("More actions for Ana Griffith"));
     fireEvent.click(screen.getByRole("button", { name: "Restore student" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Restore student" }).at(-1)!);
 
     await waitFor(() => expect(saveStudent).toHaveBeenCalledWith(expect.objectContaining({
       studentId: archived.id,
@@ -256,13 +262,12 @@ describe("AdultAdminApp", () => {
   });
 
   it("shows the daily ledger and navigates recap dates through the URL", () => {
-    render(<AdultAdminApp data={data} />);
-    fireEvent.click(screen.getAllByRole("button", { name: "Activity" })[0]!);
+    render(<AdultAdminApp data={data} initialView="activity" initialActivityTab="day" />);
     expect(screen.getByText("Entries for this day")).toBeInTheDocument();
     expect(screen.getByText("BBD $25.00 charge")).toBeInTheDocument();
     expect(screen.getByText("BBD $30.00 payment")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous day" }));
-    expect(push).toHaveBeenCalledWith("/?view=activity&date=2026-07-30");
+    expect(push).toHaveBeenCalledWith("/?view=activity&tab=day&date=2026-07-30");
   });
 
   it("opens a student profile directly from Today", () => {
@@ -273,8 +278,7 @@ describe("AdultAdminApp", () => {
   });
 
   it("corrects a payment immutably from the daily ledger", async () => {
-    render(<AdultAdminApp data={data} />);
-    fireEvent.click(screen.getAllByRole("button", { name: "Activity" })[0]!);
+    render(<AdultAdminApp data={data} initialView="activity" initialActivityTab="day" />);
     fireEvent.click(screen.getByRole("button", { name: /Asha Clarke.*BBD \$30\.00 payment/i }));
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "25.00" } });
     fireEvent.change(screen.getByLabelText("Reason for correction"), { target: { value: "Cash count correction" } });
@@ -290,8 +294,7 @@ describe("AdultAdminApp", () => {
   });
 
   it("edits a versioned session from the daily ledger", async () => {
-    render(<AdultAdminApp data={data} />);
-    fireEvent.click(screen.getAllByRole("button", { name: "Activity" })[0]!);
+    render(<AdultAdminApp data={data} initialView="activity" initialActivityTab="day" />);
     fireEvent.click(screen.getByRole("button", { name: /Joel Best.*Held/i }));
     fireEvent.change(screen.getByLabelText("Status"), { target: { value: "no_show" } });
     fireEvent.click(screen.getByRole("button", { name: "Save session changes" }));
@@ -302,5 +305,22 @@ describe("AdultAdminApp", () => {
       status: "no_show",
       void: false,
     })));
+  });
+
+  it("keeps timeline filters in the URL and opens canonical entries", () => {
+    render(<AdultAdminApp data={data} initialView="activity" initialActivityTab="timeline" />);
+    expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.change(screen.getByLabelText("Entry type"), { target: { value: "payment" } });
+    expect(push).toHaveBeenCalledWith("/?view=activity&tab=timeline&type=payment");
+    fireEvent.click(screen.getByRole("button", { name: /Asha Clarke.*BBD \$30\.00 payment/i }));
+    expect(screen.getByRole("dialog", { name: "Correct payment" })).toBeInTheDocument();
+  });
+
+  it("uses an accessible overflow menu for secondary mobile roster actions", () => {
+    render(<AdultAdminApp data={data} initialView="students" />);
+    const menu = screen.getByLabelText("More actions for Asha Clarke");
+    fireEvent.click(menu);
+    expect(screen.getAllByRole("button", { name: "Record payment" })[0]).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Manage student" })[0]).toBeInTheDocument();
   });
 });

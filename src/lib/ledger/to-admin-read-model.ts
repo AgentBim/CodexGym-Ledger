@@ -43,6 +43,14 @@ export function toAdultAdminReadModel(dashboard: LedgerDashboard): AdultAdminRea
     replacementPaymentId: payment.replacementPaymentId,
     sortKey: `${payment.paymentDate}-${payment.createdAt}`,
   });
+  const timeline = [
+    ...dashboard.sessions.map((session) => ({ id: `session-${session.id}`, kind: "session" as const, studentId: session.studentId, studentName: names.get(session.studentId) ?? "Archived student", date: session.sessionDate, dateLabel: dateLabel(session.sessionDate, { day: "numeric", month: "short", year: "numeric" }), label: session.voidedAt ? "Voided session" : session.status === "no_show" ? "No-show session" : `${session.status[0]!.toUpperCase()}${session.status.slice(1)} session`, detail: session.voidReason ?? (session.status === "held" && session.chargeRateCents != null ? `BBD $${(session.chargeRateCents / 100).toFixed(2)} charge` : "No charge"), entry: sessionEntry(session) })),
+    ...dashboard.payments.map((payment) => ({ id: `payment-${payment.id}`, kind: "payment" as const, studentId: payment.studentId, studentName: names.get(payment.studentId) ?? "Archived student", date: payment.paymentDate, dateLabel: dateLabel(payment.paymentDate, { day: "numeric", month: "short", year: "numeric" }), label: payment.voidedAt ? `Voided BBD $${(payment.amountCents / 100).toFixed(2)} payment` : `BBD $${(payment.amountCents / 100).toFixed(2)} payment`, detail: payment.voidReason ?? `${payment.method[0]!.toUpperCase()}${payment.method.slice(1)}`, entry: paymentEntry(payment) })),
+    ...dashboard.auditEvents.filter((event) => ["student", "template", "daily_review"].includes(event.entityType)).map((event) => ({ id: `audit-${event.id}`, kind: "administrative" as const, studentId: null, studentName: null, date: event.occurredAt.slice(0, 10), dateLabel: new Intl.DateTimeFormat("en-BB", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Barbados" }).format(new Date(event.occurredAt)), label: `${event.entityType.replaceAll("_", " ")} ${event.action.replaceAll("_", " ")}`, detail: "Administrative change" })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+  const last7 = new Date(`${dashboard.today}T00:00:00Z`); last7.setUTCDate(last7.getUTCDate() - 6);
+  const next7 = new Date(`${dashboard.today}T00:00:00Z`); next7.setUTCDate(next7.getUTCDate() + 7);
+  const last30 = new Date(`${dashboard.today}T00:00:00Z`); last30.setUTCDate(last30.getUTCDate() - 30);
   return {
     todayDate: dashboard.today,
     todayLabel: dateLabel(dashboard.today, { weekday: "long", day: "numeric", month: "long" }),
@@ -67,6 +75,7 @@ export function toAdultAdminReadModel(dashboard: LedgerDashboard): AdultAdminRea
       label: `${event.entityType.replaceAll("_", " ")} · ${event.action.replaceAll("_", " ")}`,
       occurredAtLabel: new Intl.DateTimeFormat("en-BB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "America/Barbados" }).format(new Date(event.occurredAt)),
     })),
+    timeline,
     dailyEntries: [
       ...dashboard.sessions.filter((session) => !session.voidedAt && session.sessionDate === dashboard.today).map((session) => ({
         id: session.id,
@@ -105,6 +114,12 @@ export function toAdultAdminReadModel(dashboard: LedgerDashboard): AdultAdminRea
       template: dashboard.templates.some((template) => !template.archivedAt),
       attendance: dashboard.sessions.some((session) => !session.voidedAt && session.status === "held"),
       payment: dashboard.payments.some((payment) => !payment.voidedAt),
+    },
+    insights: {
+      unresolvedSessions: dashboard.sessions.filter((session) => !session.voidedAt && session.status === "scheduled" && session.sessionDate <= dashboard.today).length,
+      recentPayments: dashboard.payments.filter((payment) => !payment.voidedAt && payment.paymentDate >= last7.toISOString().slice(0, 10) && payment.paymentDate <= dashboard.today).length,
+      upcomingClasses: dashboard.sessions.filter((session) => !session.voidedAt && session.status === "scheduled" && session.sessionDate > dashboard.today && session.sessionDate <= next7.toISOString().slice(0, 10)).length,
+      inactiveStudents: dashboard.studentSummaries.filter((student) => !student.archivedAt && (!student.lastHeldOn || student.lastHeldOn < last30.toISOString().slice(0, 10))).length,
     },
     review: {
       date: dashboard.dayRecap.date,

@@ -64,6 +64,27 @@ h2 { font-size:1.05rem; margin-bottom:0; letter-spacing:-.015em; }
 .template-preview dt { color:var(--muted); font-size:.72rem; }
 .template-preview dd { margin:0; font-weight:800; }
 .danger-text { color:var(--danger); }
+.insight-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.65rem; margin-bottom:1rem; }
+.insight-grid button { display:grid; gap:.2rem; min-height:100px; padding:.85rem; border:1px solid var(--line); border-radius:16px; background:var(--surface); color:var(--ink); text-align:left; box-shadow:var(--shadow); }
+.insight-grid span,.insight-grid small { color:var(--muted); font-size:.74rem; }
+.insight-grid b { font-size:1.5rem; }
+.activity-tabs { display:flex; gap:.35rem; margin-bottom:1rem; padding:.25rem; border-radius:14px; background:var(--wash); }
+.activity-tabs button { flex:1; border:0; border-radius:11px; padding:.7rem; background:transparent; color:var(--muted); font-weight:700; }
+.activity-tabs button.active { background:var(--surface); color:var(--ink); box-shadow:var(--shadow); }
+.timeline-filters { display:grid; grid-template-columns:1.3fr 1fr 1fr 1fr; gap:.6rem; margin-bottom:1rem; }
+.timeline-filters label { display:grid; gap:.3rem; color:var(--muted); font-size:.74rem; }
+.timeline-list { display:grid; }
+.timeline-entry { width:100%; display:flex; align-items:center; gap:.75rem; padding:.8rem 0; border:0; border-bottom:1px solid var(--line); background:transparent; color:inherit; text-align:left; }
+.timeline-entry>span:nth-child(2) { display:grid; gap:.15rem; flex:1; }
+.timeline-entry small,.timeline-entry span { color:var(--muted); font-size:.78rem; }
+.entry-kind.administrative { background:var(--wash); color:var(--muted); }
+.card-actions { display:flex; align-items:center; gap:.4rem; }
+.overflow-menu { position:relative; }
+.overflow-menu summary { cursor:pointer; list-style:none; padding:.55rem .65rem; border:1px solid var(--line); border-radius:10px; font-weight:800; }
+.overflow-menu summary::-webkit-details-marker { display:none; }
+.overflow-menu>div { position:absolute; z-index:4; right:0; top:calc(100% + .35rem); display:grid; min-width:165px; padding:.35rem; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); }
+.overflow-menu button { border:0; padding:.65rem; background:transparent; color:var(--ink); text-align:left; }
+@media (max-width: 760px) { .insight-grid { grid-template-columns:1fr 1fr; } .timeline-filters { grid-template-columns:1fr 1fr; } }
 .sticky-action { position:fixed; z-index:8; left:1rem; right:1rem; bottom:calc(5.8rem + env(safe-area-inset-bottom)); padding:.5rem; border-radius:18px; background:rgb(255 255 255 / .92); box-shadow:0 6px 25px rgb(19 47 56 / .16); backdrop-filter:blur(12px); }
 .sticky-action .primary { width:100%; }
 .bottom-nav { position:fixed; z-index:7; bottom:0; left:0; right:0; display:grid; grid-template-columns:repeat(4,1fr); padding:.4rem .35rem calc(.4rem + env(safe-area-inset-bottom)); background:#fff; border-top:1px solid var(--line); }
