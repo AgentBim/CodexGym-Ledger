@@ -14,7 +14,7 @@
 | --- | --- | --- | --- | --- |
 | 1 — Ledger integrity | `codex/ux-release-1-ledger` | `c3169c9` / `chalktab-ux-release-1` | `dpl_8yndgCUgeapmJWFPDtpxajdJDXQw` | `chalktab-r0ce421ug-jelanis-projects-19609d5d.vercel.app` |
 | 2 — Template safety | `codex/ux-release-2-scheduling` | `5f76313` / `chalktab-ux-release-2` | `dpl_3tUAzPdFqMnQEmydKWY68Z8imjw1` | `chalktab-e39ds5nxm-jelanis-projects-19609d5d.vercel.app` |
-| 3 — Activity and mobile | `codex/ux-release-3-activity` | Recorded after verification | Recorded after verification | Recorded after verification |
+| 3 — Activity and mobile | `codex/ux-release-3-activity` | `621cd65` / `chalktab-ux-release-3` | `dpl_ESTrcRQgLkXS1HCXgAGtxdSerJss` | `chalktab-d21clt0rp-jelanis-projects-19609d5d.vercel.app` |
 
 ## Rollback procedure
 
