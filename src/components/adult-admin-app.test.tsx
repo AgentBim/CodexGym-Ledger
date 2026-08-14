@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdultAdminApp, EMPTY_ADULT_ADMIN_DATA, type AdultAdminReadModel } from "./adult-admin-app";
-import { bulkMarkAttended, logPayment, materializeRecurringSessions, saveSession, saveStudent, saveTemplate, undoOperation } from "../actions/ledger";
+import { bulkMarkAttended, correctPayment, logPayment, materializeRecurringSessions, saveSession, saveStudent, saveTemplate, undoOperation } from "../actions/ledger";
 
 const refresh = vi.fn();
 const push = vi.fn();
@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push }) }));
 vi.mock("../actions/auth", () => ({ signOut: vi.fn() }));
 vi.mock("../actions/ledger", () => ({
   bulkMarkAttended: vi.fn(),
+  correctPayment: vi.fn(),
   logPayment: vi.fn(),
   markDailyReviewed: vi.fn(),
   materializeRecurringSessions: vi.fn(),
@@ -32,8 +33,8 @@ const data: AdultAdminReadModel = {
   ],
   activities: [],
   dailyEntries: [
-    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "session", studentName: "Joel Best", label: "Held", detail: "BBD $25.00 charge" },
-    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentName: "Asha Clarke", label: "BBD $30.00 payment", detail: "Cash" },
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "session", studentName: "Joel Best", label: "Held", detail: "BBD $25.00 charge", entry: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "session", studentId: "22222222-2222-4222-8222-222222222222", studentName: "Joel Best", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "Held session", detail: "BBD $25.00 charge", voided: false, version: 2, status: "held", chargeRateCents: 2500 } },
+    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentName: "Asha Clarke", label: "BBD $30.00 payment", detail: "Cash", entry: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentId: "11111111-1111-4111-8111-111111111111", studentName: "Asha Clarke", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false, version: 1, amountCents: 3000, method: "cash" } },
   ],
   templates: [],
   review: { date: "2026-07-31", reviewed: false, heldCount: 1, noShowCount: 0, collectedCents: 3000, scheduledCount: 1 },
@@ -44,6 +45,7 @@ describe("AdultAdminApp", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(bulkMarkAttended).mockResolvedValue({ ok: true, data: { operationId: "44444444-4444-4444-8444-444444444444" } });
+    vi.mocked(correctPayment).mockResolvedValue({ ok: true, data: { operationId: "43434343-4343-4343-8343-434343434343" } });
     vi.mocked(logPayment).mockResolvedValue({ ok: true, data: { operationId: "45454545-4545-4545-8545-454545454545" } });
     vi.mocked(undoOperation).mockResolvedValue({ ok: true, data: { operationId: "55555555-5555-4555-8555-555555555555" } });
     vi.mocked(saveStudent).mockResolvedValue({ ok: true, data: { operationId: "66666666-6666-4666-8666-666666666666" } });
@@ -252,5 +254,44 @@ describe("AdultAdminApp", () => {
     expect(screen.getByText("BBD $30.00 payment")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous day" }));
     expect(push).toHaveBeenCalledWith("/?view=activity&date=2026-07-30");
+  });
+
+  it("opens a student profile directly from Today", () => {
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "View Asha Clarke" }));
+    expect(screen.getByRole("dialog", { name: "Asha Clarke" })).toBeInTheDocument();
+    expect(screen.getByText("Current balance")).toBeInTheDocument();
+  });
+
+  it("corrects a payment immutably from the daily ledger", async () => {
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Activity" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: /Asha Clarke.*BBD \$30\.00 payment/i }));
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "25.00" } });
+    fireEvent.change(screen.getByLabelText("Reason for correction"), { target: { value: "Cash count correction" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save correction" }));
+
+    await waitFor(() => expect(correctPayment).toHaveBeenCalledWith(expect.objectContaining({
+      paymentId: data.dailyEntries[1]!.id,
+      expectedVersion: 1,
+      voidReason: "Cash count correction",
+      replacement: expect.objectContaining({ amountCents: 2500, method: "cash" }),
+    })));
+    expect(await screen.findByText("Asha Clarke's payment was corrected.")).toBeInTheDocument();
+  });
+
+  it("edits a versioned session from the daily ledger", async () => {
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Activity" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: /Joel Best.*Held/i }));
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "no_show" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save session changes" }));
+
+    await waitFor(() => expect(saveSession).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: data.dailyEntries[0]!.id,
+      expectedVersion: 2,
+      status: "no_show",
+      void: false,
+    })));
   });
 });

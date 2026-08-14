@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { bulkMarkAttended, logPayment, markDailyReviewed, saveSession, saveStudent, saveTemplate, materializeRecurringSessions, undoOperation, type MutationResult } from "../actions/ledger";
+import { bulkMarkAttended, correctPayment, logPayment, markDailyReviewed, saveSession, saveStudent, saveTemplate, materializeRecurringSessions, undoOperation, type MutationResult } from "../actions/ledger";
 import { signOut } from "../actions/auth";
 
 type View = "today" | "students" | "activity" | "more";
@@ -26,10 +26,21 @@ export type StudentReadModel = {
 export type StudentHistoryEntryReadModel = {
   id: string;
   kind: "session" | "payment";
+  studentId?: string;
+  studentName?: string;
+  date?: string;
   dateLabel: string;
   label: string;
   detail: string;
   voided: boolean;
+  voidReason?: string | null;
+  version?: number;
+  status?: SessionStatus;
+  chargeRateCents?: number | null;
+  amountCents?: number;
+  method?: "cash" | "transfer" | "other";
+  notes?: string | null;
+  replacementPaymentId?: string | null;
 };
 
 export type ActivityReadModel = {
@@ -44,6 +55,7 @@ export type DailyEntryReadModel = {
   studentName: string;
   label: string;
   detail: string;
+  entry: StudentHistoryEntryReadModel;
 };
 
 export type TemplateReadModel = {
@@ -125,9 +137,10 @@ function shiftDate(value: string, days: number) {
 export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "today" }: { data?: AdultAdminReadModel; initialView?: View }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
-  const [modal, setModal] = useState<"bulk" | "payment" | "session" | "student" | "studentDetail" | "archive" | "template" | "templateArchive" | null>(null);
+  const [modal, setModal] = useState<"bulk" | "payment" | "session" | "entry" | "student" | "studentDetail" | "archive" | "template" | "templateArchive" | null>(null);
   const [editingStudent, setEditingStudent] = useState<StudentReadModel | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<TemplateReadModel | null>(null);
+  const [editingEntry, setEditingEntry] = useState<StudentHistoryEntryReadModel | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | BalanceState>("all");
   const [rosterStatus, setRosterStatus] = useState<"active" | "archived">("active");
@@ -138,6 +151,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string | null>(null);
   const [undo, setUndo] = useState<UndoState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const activeStudents = useMemo(() => data.students.filter((student) => !student.archived), [data.students]);
   const filtered = useMemo(() => data.students.filter((student) => Boolean(student.archived) === (rosterStatus === "archived") && student.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || student.balanceState === filter)), [data.students, filter, query, rosterStatus]);
@@ -162,6 +176,12 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   function viewStudent(student: StudentReadModel) {
     setEditingStudent(student);
     setModal("studentDetail");
+  }
+
+  function openEntry(entry: StudentHistoryEntryReadModel) {
+    setEditingEntry(entry);
+    setFormError(null);
+    setModal("entry");
   }
 
   function openPayment(studentId?: string) {
@@ -247,6 +267,41 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       if (id) setUndo({ operationId: id, message: `${statusLabel(status)} session saved` });
       router.refresh();
     } catch { setNotice("The session could not be saved. Your entered values are safe to retry."); }
+    finally { setIsPending(false); }
+  }
+
+  async function submitEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingEntry?.studentId || !editingEntry.version || !editingEntry.date) return setFormError("Refresh before changing this entry.");
+    const form = new FormData(event.currentTarget);
+    setFormError(null);
+    setIsPending(true);
+    try {
+      if (editingEntry.kind === "payment") {
+        const replace = form.get("replacement") === "on";
+        const amountCents = Math.round(Number(form.get("amount")) * 100);
+        const result = await correctPayment({
+          idempotencyKey: freshIdempotencyKey(),
+          paymentId: editingEntry.id,
+          expectedVersion: editingEntry.version,
+          voidReason: String(form.get("voidReason")),
+          replacement: replace ? { paymentDate: String(form.get("date")), amountCents, method: String(form.get("method")), notes: String(form.get("notes") ?? "") || null } : null,
+        });
+        const error = resultMessage(result);
+        if (error) return setFormError(error);
+        setNotice(replace ? `${editingEntry.studentName ?? "Student"}'s payment was corrected.` : `${editingEntry.studentName ?? "Student"}'s payment was voided.`);
+      } else {
+        const shouldVoid = form.get("void") === "on";
+        const status = String(form.get("status")) as SessionStatus;
+        const result = await saveSession({ idempotencyKey: freshIdempotencyKey(), sessionId: editingEntry.id, studentId: editingEntry.studentId, sessionDate: String(form.get("date")), status, void: shouldVoid, voidReason: shouldVoid ? String(form.get("voidReason")) : null, expectedVersion: editingEntry.version });
+        const error = resultMessage(result);
+        if (error) return setFormError(error);
+        setNotice(shouldVoid ? `${editingEntry.studentName ?? "Student"}'s session was voided.` : `${editingEntry.studentName ?? "Student"}'s session was updated.`);
+      }
+      setModal(null);
+      setEditingEntry(null);
+      router.refresh();
+    } catch { setFormError("The entry could not be changed. Your entered values are safe to retry."); }
     finally { setIsPending(false); }
   }
 
@@ -408,9 +463,9 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
         <header className="topbar"><Brand /><span className="save-state"><i /> {isPending ? "Saving…" : "All changes saved"}</span></header>
         <main id="main-content" className="main-content">
           {notice && <div className="review-state app-notice" role="status"><span aria-hidden="true">!</span><div><b>{notice}</b></div><button className="text-button" onClick={() => setNotice(null)}>Dismiss</button></div>}
-          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} />}
+          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={viewStudent} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
-          {view === "activity" && <Activity data={data} onDateChange={(date) => router.push(`/?view=activity&date=${date}`)} onReview={markReviewed} onResolve={() => setView("today")} isPending={isPending} />}
+          {view === "activity" && <Activity data={data} onDateChange={(date) => router.push(`/?view=activity&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => setView("today")} isPending={isPending} />}
           {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setModal("template"); }} />}
         </main>
         <nav className="bottom-nav" aria-label="Primary navigation">{navItems.map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} />)}</nav>
@@ -418,7 +473,8 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       {modal === "bulk" && <BulkDialog date={data.todayLabel} students={activeStudents} selected={selected} setSelected={setSelected} reviewing={bulkReviewing} setReviewing={setBulkReviewing} onClose={() => setModal(null)} onConfirm={confirmBulk} isPending={isPending} />}
       {modal === "payment" && <PaymentDialog date={data.todayDate} students={activeStudents} selectedStudentId={paymentStudentId} onClose={() => { setModal(null); setPaymentStudentId(null); setPaymentIdempotencyKey(null); }} onSubmit={submitPayment} isPending={isPending} />}
       {modal === "session" && <SessionDialog date={data.todayDate} students={activeStudents} selectedStudentId={sessionStudentId} onClose={() => { setModal(null); setSessionStudentId(null); }} onSubmit={submitSession} isPending={isPending} />}
-      {modal === "studentDetail" && editingStudent && <StudentDetailDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); }} onPay={() => openPayment(editingStudent.id)} onSession={() => openSession(editingStudent.id)} onEdit={() => setModal("student")} />}
+      {modal === "entry" && editingEntry && <EntryDialog entry={editingEntry} student={data.students.find((student) => student.id === editingEntry.studentId)} error={formError} onClose={() => { setModal(null); setEditingEntry(null); setFormError(null); }} onSubmit={submitEntry} isPending={isPending} />}
+      {modal === "studentDetail" && editingStudent && <StudentDetailDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); }} onPay={() => openPayment(editingStudent.id)} onSession={() => openSession(editingStudent.id)} onEdit={() => setModal("student")} onEntry={openEntry} />}
       {modal === "student" && <StudentDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); }} onSubmit={submitStudent} onArchive={editingStudent?.version && !editingStudent.archived ? () => setModal("archive") : undefined} onRestore={editingStudent?.version && editingStudent.archived ? restoreStudent : undefined} isPending={isPending} />}
       {modal === "archive" && editingStudent && <ArchiveStudentDialog student={editingStudent} onClose={() => setModal("student")} onConfirm={archiveStudent} isPending={isPending} />}
       {modal === "template" && <TemplateDialog template={editingTemplate} students={activeStudents} defaultDate={data.todayDate} onClose={() => { setModal(null); setEditingTemplate(null); }} onSubmit={submitTemplate} onToggle={editingTemplate ? () => setTemplateState(editingTemplate, { paused: !editingTemplate.paused }) : undefined} onArchive={editingTemplate ? () => setModal("templateArchive") : undefined} isPending={isPending} />}
@@ -435,14 +491,14 @@ function PageHeading({ eyebrow, title, children }: { eyebrow: string; title: str
 function Balance({ student }: { student: StudentReadModel }) { return <span className={`balance ${student.balanceState}`}><span aria-hidden="true">{student.balanceState === "overdue" ? "▲" : student.balanceState === "credit" ? "↓" : student.balanceState === "settled" ? "✓" : "○"}</span>{balanceLabel(student)}</span>; }
 function Status({ value }: { value: SessionStatus | null }) { return <span className={`status ${(value ?? "unscheduled").replace("_", "")}`}>{statusLabel(value)}</span>; }
 
-function Today({ data, onBulk, onPay, onSession, onAddStudent, onShowOverdue }: { data: AdultAdminReadModel; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onAddStudent: () => void; onShowOverdue: () => void }) {
+function Today({ data, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue }: { data: AdultAdminReadModel; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void }) {
   const overdueCount = data.students.filter((student) => student.balanceState === "overdue").length;
   const scheduledCount = data.students.filter((student) => student.todaySessionStatus === "scheduled").length;
   const heldCount = data.students.filter((student) => student.todaySessionStatus === "held").length;
   return <><PageHeading eyebrow={data.todayLabel} title="Today" />
     {overdueCount > 0 && <button className="alert-card" onClick={onShowOverdue}><span aria-hidden="true">!</span><b>{overdueCount} {overdueCount === 1 ? "student is" : "students are"} overdue</b><small>View outstanding balances →</small></button>}
     <section className="section"><div className="section-title"><div><p className="eyebrow">Today’s class</p><h2>{scheduledCount} scheduled · {heldCount} held</h2></div><div className="section-actions"><button className="secondary" disabled={!data.students.length} onClick={onSession}>+ Session</button><button className="secondary" disabled={!data.students.length} onClick={() => onPay()}>+ Payment</button></div></div>
-      {data.students.length ? <div className="student-list">{data.students.map((student) => <article className="student-row" key={student.id}><div className="avatar" aria-hidden="true">{student.name.split(" ").map((part) => part[0]).join("")}</div><div className="student-copy"><strong>{student.name}</strong><Balance student={student} /></div><button className="quick-pay" onClick={() => onPay(student.id)} aria-label={`Record payment for ${student.name}`}>Pay</button><Status value={student.todaySessionStatus} /></article>)}</div> : <EmptyLedger onAdd={onAddStudent} />}
+      {data.students.length ? <div className="student-list">{data.students.map((student) => <article className="student-row" key={student.id}><button className="student-open" onClick={() => onView(student)} aria-label={`View ${student.name}`}><span className="avatar" aria-hidden="true">{student.name.split(" ").map((part) => part[0]).join("")}</span><span className="student-copy"><strong>{student.name}</strong><Balance student={student} /></span></button><button className="quick-pay" onClick={() => onPay(student.id)} aria-label={`Record payment for ${student.name}`}>Pay</button><Status value={student.todaySessionStatus} /></article>)}</div> : <EmptyLedger onAdd={onAddStudent} />}
     </section>
     <section className="section recent"><div className="section-title"><h2>Recent activity</h2></div>{data.activities.length ? data.activities.slice(0, 3).map((activity) => <div className="activity-row" key={activity.id}><span className="activity-icon">✓</span><span>{activity.label}<small>{activity.occurredAtLabel}</small></span></div>) : <div className="empty"><b>No activity yet</b><p>Attendance and payments will appear here after you log them.</p></div>}</section>
     <div className="sticky-action"><button className="primary" disabled={!data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> Mark attendance</button></div></>;
@@ -455,9 +511,9 @@ function Students({ students, activeCount, query, setQuery, filter, setFilter, r
   return <><PageHeading eyebrow="Roster" title="Students"><button className="primary compact" onClick={onAdd}>+ Add student</button></PageHeading><div className="roster-tabs" role="group" aria-label="Roster status"><button className={rosterStatus === "active" ? "active" : ""} aria-pressed={rosterStatus === "active"} onClick={() => setRosterStatus("active")}>Active</button><button className={rosterStatus === "archived" ? "active" : ""} aria-pressed={rosterStatus === "archived"} onClick={() => setRosterStatus("archived")}>Archived</button></div><div className="search-row"><label className="search"><span>⌕</span><span className="sr-only">Search students</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name" /></label><select aria-label="Filter by balance" value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">All balances</option><option value="overdue">Overdue</option><option value="owed">Owes</option><option value="settled">Settled</option><option value="credit">Credit</option></select></div><p className="result-count">{students.length} {rosterStatus} students</p><div className="student-grid">{students.map((student) => <article className="profile-card" key={student.id}><div className="avatar">{student.name[0]}</div><div><h2>{student.name}</h2><Balance student={student} /><p>{student.archived ? "Archived · history preserved" : student.lastAttendedOn ? `Last attended ${student.lastAttendedOn}` : "No attendance yet"}</p></div><div>{!student.archived && <button className="secondary" onClick={() => onPay(student.id)}>Pay</button>}<button className="text-button" onClick={() => onView(student)}>View</button><button className="text-button" onClick={() => onEdit(student)}>{student.archived ? "Restore" : "Manage"}</button></div></article>)}</div>{students.length === 0 && <div className="empty"><b>{activeRosterEmpty ? "No active students yet" : rosterStatus === "archived" ? "No archived students" : "No matching students"}</b><p>{activeRosterEmpty ? "Add your first student to begin. The app never inserts demo students automatically." : rosterStatus === "archived" ? "Archived students will appear here with their history and balances preserved." : "Try clearing your search or balance filter."}</p>{activeRosterEmpty && <button className="primary compact" onClick={onAdd}>Add first student</button>}</div>}</>;
 }
 
-function Activity({ data, onDateChange, onReview, onResolve, isPending }: { data: AdultAdminReadModel; onDateChange: (date: string) => void; onReview: () => void; onResolve: () => void; isPending: boolean }) {
+function Activity({ data, onDateChange, onEntry, onReview, onResolve, isPending }: { data: AdultAdminReadModel; onDateChange: (date: string) => void; onEntry: (entry: StudentHistoryEntryReadModel) => void; onReview: () => void; onResolve: () => void; isPending: boolean }) {
   const review = data.review;
-  return <><PageHeading eyebrow="End-of-day review" title="Recap" /><div className="recap-date-nav"><button className="icon-button" aria-label="Previous day" onClick={() => onDateChange(shiftDate(review.date, -1))}>←</button><label className="date-control"><span className="sr-only">Recap date</span><input type="date" value={review.date} onChange={(event) => onDateChange(event.target.value)} /></label><button className="icon-button" aria-label="Next day" onClick={() => onDateChange(shiftDate(review.date, 1))}>→</button></div><div className={`review-state ${review.reviewed ? "done" : ""}`}><span>{review.reviewed ? "✓" : "○"}</span><div><b>{review.reviewed ? "Reviewed" : "Not reviewed yet"}</b><small>{review.reviewed ? "You can review again after later changes." : "Check the day’s entries before wrapping up."}</small></div></div><section className="metric-grid"><Metric label="Held" value={String(review.heldCount)} /><Metric label="No-show" value={String(review.noShowCount)} /><Metric label="Collected" value={money(review.collectedCents)} accent /><Metric label="Still scheduled" value={String(review.scheduledCount)} /></section><section className="section"><div className="section-title"><div><p className="eyebrow">Daily ledger</p><h2>Entries for this day</h2></div><span className="count">{data.dailyEntries.length}</span></div>{data.dailyEntries.length ? <div className="daily-entry-list">{data.dailyEntries.map((entry) => <article className="daily-entry" key={`${entry.kind}-${entry.id}`}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><div><b>{entry.studentName}</b><span>{entry.label}</span><small>{entry.detail}</small></div></article>)}</div> : <div className="empty compact-empty"><b>No entries for this date</b><p>Use the date controls to review another day.</p></div>}</section><section className="summary-card"><p className="eyebrow">{data.period.label} · BBD</p><div><span><small>Collected</small><b>{money(data.period.collectedCents)}</b></span><span><small>Total owed</small><b>{money(data.period.totalOwedCents)}</b></span><span><small>Total credit</small><b>{money(data.period.totalCreditCents)}</b></span><span><small>Attendance</small><b>{data.period.attendanceCount}</b></span></div></section>{review.scheduledCount > 0 && <section className="section"><div className="section-title"><h2>Needs attention</h2><span className="count">{review.scheduledCount}</span></div><div className="warning"><b>{review.scheduledCount} {review.scheduledCount === 1 ? "session is" : "sessions are"} still scheduled</b><p>Confirm attendance or update the session status before wrapping up.</p><button onClick={onResolve}>Resolve on Today →</button></div></section>}<div className="sticky-action"><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} title={review.scheduledCount > 0 ? "Resolve scheduled sessions first" : undefined} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div></>;
+  return <><PageHeading eyebrow="End-of-day review" title="Recap" /><div className="recap-date-nav"><button className="icon-button" aria-label="Previous day" onClick={() => onDateChange(shiftDate(review.date, -1))}>←</button><label className="date-control"><span className="sr-only">Recap date</span><input type="date" value={review.date} onChange={(event) => onDateChange(event.target.value)} /></label><button className="icon-button" aria-label="Next day" onClick={() => onDateChange(shiftDate(review.date, 1))}>→</button></div><div className={`review-state ${review.reviewed ? "done" : ""}`}><span>{review.reviewed ? "✓" : "○"}</span><div><b>{review.reviewed ? "Reviewed" : "Not reviewed yet"}</b><small>{review.reviewed ? "You can review again after later changes." : "Check the day’s entries before wrapping up."}</small></div></div><section className="metric-grid"><Metric label="Held" value={String(review.heldCount)} /><Metric label="No-show" value={String(review.noShowCount)} /><Metric label="Collected" value={money(review.collectedCents)} accent /><Metric label="Still scheduled" value={String(review.scheduledCount)} /></section><section className="section"><div className="section-title"><div><p className="eyebrow">Daily ledger</p><h2>Entries for this day</h2></div><span className="count">{data.dailyEntries.length}</span></div>{data.dailyEntries.length ? <div className="daily-entry-list">{data.dailyEntries.map((entry) => <button className="daily-entry" key={`${entry.kind}-${entry.id}`} onClick={() => onEntry(entry.entry)}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><span><b>{entry.studentName}</b><span>{entry.label}</span><small>{entry.detail}</small></span><span aria-hidden="true">›</span></button>)}</div> : <div className="empty compact-empty"><b>No entries for this date</b><p>Use the date controls to review another day.</p></div>}</section><section className="summary-card"><p className="eyebrow">{data.period.label} · BBD</p><div><span><small>Collected</small><b>{money(data.period.collectedCents)}</b></span><span><small>Total owed</small><b>{money(data.period.totalOwedCents)}</b></span><span><small>Total credit</small><b>{money(data.period.totalCreditCents)}</b></span><span><small>Attendance</small><b>{data.period.attendanceCount}</b></span></div></section>{review.scheduledCount > 0 && <section className="section"><div className="section-title"><h2>Needs attention</h2><span className="count">{review.scheduledCount}</span></div><div className="warning"><b>{review.scheduledCount} {review.scheduledCount === 1 ? "session is" : "sessions are"} still scheduled</b><p>Confirm attendance or update the session status before wrapping up.</p><button onClick={onResolve}>Resolve on Today →</button></div></section>}<div className="sticky-action"><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} title={review.scheduledCount > 0 ? "Resolve scheduled sessions first" : undefined} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div></>;
 }
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) { return <div className={`metric ${accent ? "accent" : ""}`}><small>{label}</small><strong>{value}</strong></div>; }
 
@@ -517,12 +573,24 @@ function SessionDialog({ date, students, selectedStudentId, onClose, onSubmit, i
   return <DialogShell title="Log session" description="Record a past, current, or future session. Only held sessions count toward the balance." onClose={onClose}><form onSubmit={onSubmit} className="entry-form"><label htmlFor="session-student">Student</label><select id="session-student" name="student" defaultValue={selectedStudentId ?? students[0]?.id} required>{students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}</select><label htmlFor="session-date">Date</label><input id="session-date" name="date" type="date" defaultValue={date} required /><label htmlFor="session-status">Status</label><select id="session-status" name="status" defaultValue="held" required><option value="scheduled">Scheduled</option><option value="held">Held</option><option value="canceled">Canceled</option><option value="no_show">No-show</option></select><div className="sheet-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={isPending || !students.length} type="submit">{isPending ? "Saving…" : "Save session"}</button></div></form></DialogShell>;
 }
 
-function StudentDetailDialog({ student, onClose, onPay, onSession, onEdit }: { student: StudentReadModel; onClose: () => void; onPay: () => void; onSession: () => void; onEdit: () => void }) {
+function StudentDetailDialog({ student, onClose, onPay, onSession, onEdit, onEntry }: { student: StudentReadModel; onClose: () => void; onPay: () => void; onSession: () => void; onEdit: () => void; onEntry: (entry: StudentHistoryEntryReadModel) => void }) {
   return <DialogShell title={student.name} description="Balance, attendance, and payment history in one place." onClose={onClose}>
     <section className={`student-detail-summary ${student.balanceState}`}><small>Current balance</small><strong>{balanceLabel(student)}</strong><div><span><small>Default rate</small><b>{money(student.defaultRateCents ?? 0)}</b></span><span><small>Last attended</small><b>{student.lastAttendedOn ?? "Not yet"}</b></span></div>{student.notes && <p>{student.notes}</p>}</section>
     <div className="student-detail-actions">{!student.archived && <><button className="primary" onClick={onPay}>+ Payment</button><button className="secondary" onClick={onSession}>+ Session</button></>}<button className="text-button" onClick={onEdit}>{student.archived ? "Restore student" : "Edit profile"}</button></div>
-    <section className="student-history"><div className="section-title"><div><p className="eyebrow">Ledger</p><h3>History</h3></div><span className="count">{student.history?.length ?? 0}</span></div>{student.history?.length ? <div>{student.history.map((entry) => <article className={`student-history-entry ${entry.voided ? "voided" : ""}`} key={`${entry.kind}-${entry.id}`}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><div><b>{entry.label}</b><span>{entry.detail}</span><small>{entry.dateLabel}{entry.voided ? " · Voided" : ""}</small></div></article>)}</div> : <div className="empty compact-empty"><b>No ledger history yet</b><p>Sessions and payments will appear here.</p></div>}</section>
+    <section className="student-history"><div className="section-title"><div><p className="eyebrow">Ledger</p><h3>History</h3></div><span className="count">{student.history?.length ?? 0}</span></div>{student.history?.length ? <div>{student.history.map((entry) => <button className={`student-history-entry ${entry.voided ? "voided" : ""}`} onClick={() => onEntry(entry)} key={`${entry.kind}-${entry.id}`}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><span><b>{entry.label}</b><span>{entry.detail}</span><small>{entry.dateLabel}{entry.voided ? " · Voided" : ""}</small></span><span aria-hidden="true">›</span></button>)}</div> : <div className="empty compact-empty"><b>No ledger history yet</b><p>Sessions and payments will appear here.</p></div>}</section>
   </DialogShell>;
+}
+
+function EntryDialog({ entry, student, error, onClose, onSubmit, isPending }: { entry: StudentHistoryEntryReadModel; student?: StudentReadModel; error: string | null; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; isPending: boolean }) {
+  const [replacePayment, setReplacePayment] = useState(true);
+  const [voidSession, setVoidSession] = useState(false);
+  const [amount, setAmount] = useState(((entry.amountCents ?? 0) / 100).toFixed(2));
+  const [status, setStatus] = useState<SessionStatus>(entry.status ?? "scheduled");
+  const originalEffect = entry.kind === "payment" ? -(entry.amountCents ?? 0) : entry.status === "held" ? entry.chargeRateCents ?? 0 : 0;
+  const replacementEffect = entry.kind === "payment" ? replacePayment ? -Math.round((Number(amount) || 0) * 100) : 0 : voidSession ? 0 : status === "held" ? entry.chargeRateCents ?? student?.defaultRateCents ?? 0 : 0;
+  const afterBalance = (student?.balanceCents ?? 0) - originalEffect + replacementEffect;
+  if (entry.voided) return <DialogShell title={entry.label} description="This immutable ledger entry has already been voided." onClose={onClose}><div className="entry-detail"><p><b>{entry.studentName}</b></p><p>{entry.dateLabel} · {entry.detail}</p>{entry.voidReason && <p className="warning">Reason: {entry.voidReason}</p>}<div className="sheet-actions single"><button className="secondary" onClick={onClose}>Close</button></div></div></DialogShell>;
+  return <DialogShell title={entry.kind === "payment" ? "Correct payment" : "Edit session"} description="The original record remains in the audit history." onClose={onClose}><form className="entry-form" onSubmit={onSubmit}>{error && <p className="form-error" role="alert" tabIndex={-1}>{error}</p>}{entry.kind === "payment" ? <><label><span><input name="replacement" type="checkbox" checked={replacePayment} onChange={(event) => setReplacePayment(event.target.checked)} /> Create corrected replacement</span></label>{replacePayment && <><label>Amount (BBD)<span className="money-field"><span>$</span><input name="amount" type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} required /></span></label><label>Date<input name="date" type="date" defaultValue={entry.date} required /></label><label>Method<select name="method" defaultValue={entry.method}><option value="cash">Cash</option><option value="transfer">Transfer</option><option value="other">Other</option></select></label><label>Notes<textarea name="notes" defaultValue={entry.notes ?? ""} rows={2} /></label></>}<label>Reason for correction<textarea name="voidReason" minLength={1} maxLength={500} required rows={2} /></label></> : <><label>Date<input name="date" type="date" defaultValue={entry.date} required /></label><label>Status<select name="status" value={status} onChange={(event) => setStatus(event.target.value as SessionStatus)}><option value="scheduled">Scheduled</option><option value="held">Held</option><option value="canceled">Canceled</option><option value="no_show">No-show</option></select></label><label><span><input name="void" type="checkbox" checked={voidSession} onChange={(event) => setVoidSession(event.target.checked)} /> Void this session</span></label>{voidSession && <label>Reason for voiding<textarea name="voidReason" minLength={1} maxLength={500} required rows={2} /></label>}</>} {student && <div className="balance-preview"><span><small>Current balance</small><b>{balanceLabel(student)}</b></span><span aria-hidden="true">→</span><span><small>Balance after</small><b>{afterBalance > 0 ? `Owes ${money(afterBalance)}` : afterBalance < 0 ? `Credit ${money(afterBalance)}` : "Settled"}</b></span></div>}<div className="sheet-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className={entry.kind === "payment" && !replacePayment || entry.kind === "session" && voidSession ? "danger" : "primary"} disabled={isPending} type="submit">{isPending ? "Saving…" : entry.kind === "payment" ? replacePayment ? "Save correction" : "Void payment" : voidSession ? "Void session" : "Save session changes"}</button></div></form></DialogShell>;
 }
 
 function StudentDialog({ student, onClose, onSubmit, onArchive, onRestore, isPending }: { student: StudentReadModel | null; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onArchive?: () => void; onRestore?: () => void; isPending: boolean }) {
