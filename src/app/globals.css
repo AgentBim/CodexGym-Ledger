@@ -77,6 +77,23 @@ h2 { font-size:1.05rem; margin-bottom:0; letter-spacing:-.015em; }
 .timeline-entry { width:100%; display:flex; align-items:center; gap:.75rem; padding:.8rem 0; border:0; border-bottom:1px solid var(--line); background:transparent; color:inherit; text-align:left; }
 .timeline-entry>span:nth-child(2) { display:grid; gap:.15rem; flex:1; }
 .timeline-entry small,.timeline-entry span { color:var(--muted); font-size:.78rem; }
+.audit-list { display:grid; }
+.audit-event { border-bottom:1px solid var(--line); }
+.audit-event summary { display:flex; align-items:center; gap:.75rem; padding:.9rem 0; cursor:pointer; list-style:none; }
+.audit-event summary::-webkit-details-marker { display:none; }
+.audit-event summary>span:nth-child(2) { display:grid; gap:.2rem; flex:1; min-width:0; }
+.audit-event summary small { color:var(--muted); }
+.audit-expand { color:var(--muted); transition:transform .18s ease; }
+.audit-event[open] .audit-expand { transform:rotate(180deg); }
+.audit-detail { padding:0 0 1rem 2.9rem; }
+.audit-detail dl { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin:0 0 .8rem; }
+.audit-detail dl div { min-width:0; }
+.audit-detail dt { color:var(--muted); font-size:.72rem; }
+.audit-detail dd { margin:.2rem 0 0; overflow-wrap:anywhere; }
+.audit-diff { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+.audit-diff section { min-width:0; }
+.audit-diff h3 { margin:0 0 .35rem; font-size:.8rem; }
+.audit-diff pre { max-height:20rem; margin:0; padding:.75rem; overflow:auto; border:1px solid var(--line); border-radius:10px; background:var(--wash); color:var(--ink); font:normal .72rem/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 .entry-kind.administrative { background:var(--wash); color:var(--muted); }
 .card-actions { display:flex; align-items:center; gap:.4rem; }
 .overflow-menu { position:relative; }
@@ -84,7 +101,7 @@ h2 { font-size:1.05rem; margin-bottom:0; letter-spacing:-.015em; }
 .overflow-menu summary::-webkit-details-marker { display:none; }
 .overflow-menu>div { position:absolute; z-index:4; right:0; top:calc(100% + .35rem); display:grid; min-width:165px; padding:.35rem; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); }
 .overflow-menu button { border:0; padding:.65rem; background:transparent; color:var(--ink); text-align:left; }
-@media (max-width: 760px) { .insight-grid { grid-template-columns:1fr 1fr; } .timeline-filters { grid-template-columns:1fr 1fr; } }
+@media (max-width: 760px) { .insight-grid { grid-template-columns:1fr 1fr; } .timeline-filters { grid-template-columns:1fr 1fr; } .audit-diff { grid-template-columns:1fr; } .audit-detail { padding-left:0; } }
 .sticky-action { position:fixed; z-index:8; left:1rem; right:1rem; bottom:calc(5.8rem + env(safe-area-inset-bottom)); padding:.5rem; border-radius:18px; background:rgb(255 255 255 / .92); box-shadow:0 6px 25px rgb(19 47 56 / .16); backdrop-filter:blur(12px); }
 .sticky-action .primary { width:100%; }
 .bottom-nav { position:fixed; z-index:7; bottom:0; left:0; right:0; display:grid; grid-template-columns:repeat(4,1fr); padding:.4rem .35rem calc(.4rem + env(safe-area-inset-bottom)); background:#fff; border-top:1px solid var(--line); }
@@ -130,6 +147,7 @@ h2 { font-size:1.05rem; margin-bottom:0; letter-spacing:-.015em; }
 .login-brand { display:flex; }
 .login-card label { display:grid; gap:8px; font-weight:750; }
 .login-card input { width:100%; min-height:48px; padding:.65rem; border:1px solid #bfcfcb; border-radius:12px; background:#fff; }
+.auth-method-form,.password-sign-in { display:grid; gap:20px; }
 .form-error { margin:0; padding:12px 14px; border:1px solid color-mix(in srgb, var(--danger) 42%, white); border-radius:12px; background:color-mix(in srgb, var(--danger) 9%, white); color:var(--danger); font-weight:750; }
 .form-success { margin:0; padding:12px 14px; border:1px solid #8ac5b2; border-radius:12px; background:#edf8f3; color:#24684e; font-weight:750; }
 .google-sign-in { min-height:48px; display:flex; align-items:center; justify-content:center; gap:.65rem; border:1px solid #bfcfcb; border-radius:14px; background:#fff; color:var(--ink); font-weight:800; }.google-sign-in span { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:#4285f4; color:#fff; font-weight:900; }.auth-divider { display:flex; align-items:center; gap:.75rem; color:var(--muted); font-size:.75rem; }.auth-divider::before,.auth-divider::after { content:""; flex:1; height:1px; background:var(--line); }

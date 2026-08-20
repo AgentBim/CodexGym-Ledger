@@ -34,6 +34,9 @@ const data: AdultAdminReadModel = {
     { id: "33333333-3333-4333-8333-333333333333", name: "Ana Griffith", balanceCents: 0, balanceState: "settled", todaySessionStatus: "canceled", lastAttendedOn: null, defaultRateCents: 3000, notes: null, version: 1 },
   ],
   activities: [],
+  auditLog: [
+    { id: "audit-1", operationId: "operation-123", entityType: "payment", entityId: "payment-1", action: "corrected", actorLabel: "owner@example.com", occurredAt: "2026-08-04T15:30:00Z", occurredAtLabel: "4 Aug 2026, 11:30 am", entityVersion: 2, beforeState: { amount_cents: 3000 }, afterState: { amount_cents: 3500 } },
+  ],
   timeline: [
     { id: "timeline-payment", kind: "payment", studentId: "11111111-1111-4111-8111-111111111111", studentName: "Asha Clarke", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", entry: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "payment", studentId: "11111111-1111-4111-8111-111111111111", studentName: "Asha Clarke", date: "2026-07-31", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false, version: 1, amountCents: 3000, method: "cash" } },
   ],
@@ -314,6 +317,17 @@ describe("AdultAdminApp", () => {
     expect(push).toHaveBeenCalledWith("/?view=activity&tab=timeline&type=payment");
     fireEvent.click(screen.getByRole("button", { name: /Asha Clarke.*BBD \$30\.00 payment/i }));
     expect(screen.getByRole("dialog", { name: "Correct payment" })).toBeInTheDocument();
+  });
+
+  it("shows a URL-backed audit log with expandable before and after details", () => {
+    render(<AdultAdminApp data={data} initialView="activity" initialActivityTab="audit" />);
+    expect(screen.getByRole("tab", { name: "Audit log" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.change(screen.getByLabelText("Record type"), { target: { value: "payment" } });
+    expect(push).toHaveBeenCalledWith("/?view=activity&tab=audit&entity=payment");
+    fireEvent.click(screen.getByText("Payment · Corrected"));
+    expect(screen.getByText("operation-123")).toBeInTheDocument();
+    expect(screen.getByText(/"amount_cents": 3000/)).toBeInTheDocument();
+    expect(screen.getByText(/"amount_cents": 3500/)).toBeInTheDocument();
   });
 
   it("uses an accessible overflow menu for secondary mobile roster actions", () => {

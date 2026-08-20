@@ -75,6 +75,19 @@ export function toAdultAdminReadModel(dashboard: LedgerDashboard): AdultAdminRea
       label: `${event.entityType.replaceAll("_", " ")} · ${event.action.replaceAll("_", " ")}`,
       occurredAtLabel: new Intl.DateTimeFormat("en-BB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "America/Barbados" }).format(new Date(event.occurredAt)),
     })),
+    auditLog: dashboard.auditEvents.map((event) => ({
+      id: event.id,
+      operationId: event.operationId,
+      entityType: event.entityType,
+      entityId: event.entityId,
+      action: event.action,
+      actorLabel: dashboard.user.email ?? "Signed-in owner",
+      occurredAt: event.occurredAt,
+      occurredAtLabel: new Intl.DateTimeFormat("en-BB", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Barbados" }).format(new Date(event.occurredAt)),
+      entityVersion: event.entityVersion,
+      beforeState: event.beforeState,
+      afterState: event.afterState,
+    })),
     timeline,
     dailyEntries: [
       ...dashboard.sessions.filter((session) => !session.voidedAt && session.sessionDate === dashboard.today).map((session) => ({

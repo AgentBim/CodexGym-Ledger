@@ -1,0 +1,6 @@
+Jaz APPzip.zip
+new-app-context/
+tmp/
+coverage/
+test-results/
+playwright-report/

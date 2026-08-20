@@ -61,6 +61,20 @@ export type TimelineEntryReadModel = {
   entry?: StudentHistoryEntryReadModel;
 };
 
+export type AuditEventReadModel = {
+  id: string;
+  operationId: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actorLabel: string;
+  occurredAt: string;
+  occurredAtLabel: string;
+  entityVersion: number | null;
+  beforeState: unknown;
+  afterState: unknown;
+};
+
 export type DailyEntryReadModel = {
   id: string;
   kind: "session" | "payment";
@@ -100,6 +114,7 @@ export type AdultAdminReadModel = {
   students: StudentReadModel[];
   activities: ActivityReadModel[];
   timeline: TimelineEntryReadModel[];
+  auditLog: AuditEventReadModel[];
   dailyEntries: DailyEntryReadModel[];
   templates: TemplateReadModel[];
   setup: { student: boolean; template: boolean; attendance: boolean; payment: boolean };
@@ -127,6 +142,7 @@ export const EMPTY_ADULT_ADMIN_DATA: AdultAdminReadModel = {
   students: [],
   activities: [],
   timeline: [],
+  auditLog: [],
   dailyEntries: [],
   templates: [],
   setup: { student: false, template: false, attendance: false, payment: false },
@@ -163,7 +179,7 @@ function shiftDate(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "today", initialActivityTab = "timeline", initialTimelineFilters = {} }: { data?: AdultAdminReadModel; initialView?: View; initialActivityTab?: "timeline" | "day"; initialTimelineFilters?: { student?: string; type?: string; from?: string; to?: string } }) {
+export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "today", initialActivityTab = "timeline", initialTimelineFilters = {} }: { data?: AdultAdminReadModel; initialView?: View; initialActivityTab?: "timeline" | "day" | "audit"; initialTimelineFilters?: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string } }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
   const [modal, setModal] = useState<"bulk" | "payment" | "session" | "entry" | "student" | "studentDetail" | "archive" | "template" | "templateArchive" | null>(null);
@@ -561,7 +577,46 @@ function Students({ students, activeCount, query, setQuery, filter, setFilter, r
   return <><PageHeading eyebrow="Roster" title="Students"><button className="primary compact" onClick={onAdd}>+ Add student</button></PageHeading><div className="roster-tabs" role="group" aria-label="Roster status"><button className={rosterStatus === "active" ? "active" : ""} aria-pressed={rosterStatus === "active"} onClick={() => setRosterStatus("active")}>Active</button><button className={rosterStatus === "archived" ? "active" : ""} aria-pressed={rosterStatus === "archived"} onClick={() => setRosterStatus("archived")}>Archived</button></div><div className="search-row"><label className="search"><span>⌕</span><span className="sr-only">Search students</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name" /></label><select aria-label="Filter by balance" value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">All balances</option><option value="overdue">Overdue</option><option value="owed">Owes</option><option value="settled">Settled</option><option value="credit">Credit</option></select></div><p className="result-count">{students.length} {rosterStatus} students</p><div className="student-grid">{students.map((student) => <article className="profile-card" key={student.id}><div className="avatar">{student.name[0]}</div><div><h2>{student.name}</h2><Balance student={student} /><p>{student.archived ? "Archived · history preserved" : student.lastAttendedOn ? `Last attended ${student.lastAttendedOn}` : "No attendance yet"}</p></div><div className="card-actions"><button className="secondary" onClick={() => onView(student)}>View</button><details className="overflow-menu"><summary aria-label={`More actions for ${student.name}`}>•••</summary><div>{!student.archived && <button onClick={() => onPay(student.id)}>Record payment</button>}<button onClick={() => onEdit(student)}>{student.archived ? "Restore student" : "Manage student"}</button></div></details></div></article>)}</div>{students.length === 0 && <div className="empty"><b>{activeRosterEmpty ? "No active students yet" : rosterStatus === "archived" ? "No archived students" : "No matching students"}</b><p>{activeRosterEmpty ? "Add your first student to begin. The app never inserts demo students automatically." : rosterStatus === "archived" ? "Archived students will appear here with their history and balances preserved." : "Try clearing your search or balance filter."}</p>{activeRosterEmpty && <button className="primary compact" onClick={onAdd}>Add first student</button>}</div>}</>;
 }
 
-function Activity({ data, initialTab, initialFilters, onNavigate, onDateChange, onEntry, onReview, onResolve, isPending }: { data: AdultAdminReadModel; initialTab: "timeline" | "day"; initialFilters: { student?: string; type?: string; from?: string; to?: string }; onNavigate: (params: URLSearchParams) => void; onDateChange: (date: string) => void; onEntry: (entry: StudentHistoryEntryReadModel) => void; onReview: () => void; onResolve: () => void; isPending: boolean }) {
+function friendlyAuditLabel(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function auditState(value: unknown, emptyLabel: string) {
+  return value == null ? emptyLabel : JSON.stringify(value, null, 2);
+}
+
+function AuditLog({ events, filters, navigate }: { events: AuditEventReadModel[]; filters: { entity?: string; action?: string; from?: string; to?: string }; navigate: (updates: Record<string, string>) => void }) {
+  const entityTypes = [...new Set(events.map((event) => event.entityType))].sort();
+  const actions = [...new Set(events.map((event) => event.action))].sort();
+  const filtered = events.filter((event) => {
+    const date = event.occurredAt.slice(0, 10);
+    return (!filters.entity || event.entityType === filters.entity) && (!filters.action || event.action === filters.action) && (!filters.from || date >= filters.from) && (!filters.to || date <= filters.to);
+  });
+  return <>
+    <section className="timeline-filters audit-filters" aria-label="Audit log filters">
+      <label>Record type<select value={filters.entity ?? ""} onChange={(event) => navigate({ entity: event.target.value })}><option value="">All record types</option>{entityTypes.map((entity) => <option key={entity} value={entity}>{friendlyAuditLabel(entity)}</option>)}</select></label>
+      <label>Action<select value={filters.action ?? ""} onChange={(event) => navigate({ action: event.target.value })}><option value="">All actions</option>{actions.map((action) => <option key={action} value={action}>{friendlyAuditLabel(action)}</option>)}</select></label>
+      <label>From<input type="date" value={filters.from ?? ""} onChange={(event) => navigate({ from: event.target.value })} /></label>
+      <label>To<input type="date" value={filters.to ?? ""} onChange={(event) => navigate({ to: event.target.value })} /></label>
+    </section>
+    <section className="section">
+      <div className="section-title"><div><h2>Audit log</h2><p className="lede">Immutable changes made by the signed-in owner.</p></div><span className="count">{filtered.length}</span></div>
+      {filtered.length ? <div className="audit-list">{filtered.map((event) => <details className="audit-event" key={event.id}>
+        <summary>
+          <span className="entry-kind administrative" aria-hidden="true">⚙</span>
+          <span><b>{friendlyAuditLabel(event.entityType)} · {friendlyAuditLabel(event.action)}</b><small>{event.occurredAtLabel} · {event.actorLabel}{event.entityVersion != null ? ` · Version ${event.entityVersion}` : ""}</small></span>
+          <span className="audit-expand" aria-hidden="true">⌄</span>
+        </summary>
+        <div className="audit-detail">
+          <dl><div><dt>Operation ID</dt><dd><code>{event.operationId}</code></dd></div><div><dt>Record ID</dt><dd><code>{event.entityId}</code></dd></div></dl>
+          <div className="audit-diff"><section><h3>Before</h3><pre>{auditState(event.beforeState, "No previous state")}</pre></section><section><h3>After</h3><pre>{auditState(event.afterState, "No resulting state")}</pre></section></div>
+        </div>
+      </details>)}</div> : <div className="empty"><b>No matching audit events</b><p>Adjust the record type, action, or date range filters.</p></div>}
+    </section>
+  </>;
+}
+
+function Activity({ data, initialTab, initialFilters, onNavigate, onDateChange, onEntry, onReview, onResolve, isPending }: { data: AdultAdminReadModel; initialTab: "timeline" | "day" | "audit"; initialFilters: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string }; onNavigate: (params: URLSearchParams) => void; onDateChange: (date: string) => void; onEntry: (entry: StudentHistoryEntryReadModel) => void; onReview: () => void; onResolve: () => void; isPending: boolean }) {
   const review = data.review;
   function navigate(updates: Record<string, string>) {
     const params = new URLSearchParams({ view: "activity", tab: initialTab, ...Object.fromEntries(Object.entries(initialFilters).filter(([, value]) => value)) as Record<string, string>, ...updates });
@@ -569,7 +624,25 @@ function Activity({ data, initialTab, initialFilters, onNavigate, onDateChange, 
     onNavigate(params);
   }
   const timeline = data.timeline.filter((entry) => (!initialFilters.student || entry.studentId === initialFilters.student) && (!initialFilters.type || initialFilters.type === "all" || entry.kind === initialFilters.type) && (!initialFilters.from || entry.date >= initialFilters.from) && (!initialFilters.to || entry.date <= initialFilters.to));
-  return <><PageHeading eyebrow="Ledger history" title="Activity" /><div className="activity-tabs" role="tablist" aria-label="Activity view"><button role="tab" aria-selected={initialTab === "timeline"} className={initialTab === "timeline" ? "active" : ""} onClick={() => navigate({ tab: "timeline" })}>Timeline</button><button role="tab" aria-selected={initialTab === "day"} className={initialTab === "day" ? "active" : ""} onClick={() => navigate({ tab: "day", date: review.date })}>Day review</button></div>{initialTab === "timeline" ? <><section className="timeline-filters" aria-label="Timeline filters"><label>Student<select value={initialFilters.student ?? ""} onChange={(event) => navigate({ student: event.target.value })}><option value="">All students</option>{data.students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}</select></label><label>Entry type<select value={initialFilters.type ?? "all"} onChange={(event) => navigate({ type: event.target.value })}><option value="all">All entries</option><option value="session">Sessions</option><option value="payment">Payments</option><option value="administrative">Administrative</option></select></label><label>From<input type="date" value={initialFilters.from ?? ""} onChange={(event) => navigate({ from: event.target.value })} /></label><label>To<input type="date" value={initialFilters.to ?? ""} onChange={(event) => navigate({ to: event.target.value })} /></label></section><section className="section"><div className="section-title"><h2>Ledger timeline</h2><span className="count">{timeline.length}</span></div>{timeline.length ? <div className="timeline-list">{timeline.map((item) => item.entry ? <button key={item.id} className="timeline-entry" onClick={() => onEntry(item.entry!)}><span className={`entry-kind ${item.kind}`}>{item.kind === "payment" ? "$" : "✓"}</span><span><b>{item.studentName}</b><span>{item.label}</span><small>{item.dateLabel} · {item.detail}</small></span><span aria-hidden="true">›</span></button> : <div key={item.id} className="timeline-entry"><span className="entry-kind administrative" aria-hidden="true">⚙</span><span><b>{item.label}</b><small>{item.dateLabel} · {item.detail}</small></span></div>)}</div> : <div className="empty"><b>No matching activity</b><p>Adjust the student, entry type, or date range filters.</p></div>}</section></> : <><div className="recap-date-nav"><button className="icon-button" aria-label="Previous day" onClick={() => onDateChange(shiftDate(review.date, -1))}>←</button><label className="date-control"><span className="sr-only">Recap date</span><input type="date" value={review.date} onChange={(event) => onDateChange(event.target.value)} /></label><button className="icon-button" aria-label="Next day" onClick={() => onDateChange(shiftDate(review.date, 1))}>→</button></div><div className={`review-state ${review.reviewed ? "done" : ""}`}><span>{review.reviewed ? "✓" : "○"}</span><div><b>{review.reviewed ? "Reviewed" : "Not reviewed yet"}</b><small>{review.reviewed ? "You can review again after later changes." : "Check the day’s entries before wrapping up."}</small></div></div><section className="metric-grid"><Metric label="Held" value={String(review.heldCount)} /><Metric label="No-show" value={String(review.noShowCount)} /><Metric label="Collected" value={money(review.collectedCents)} accent /><Metric label="Still scheduled" value={String(review.scheduledCount)} /></section><section className="section"><div className="section-title"><div><p className="eyebrow">Daily ledger</p><h2>Entries for this day</h2></div><span className="count">{data.dailyEntries.length}</span></div>{data.dailyEntries.length ? <div className="daily-entry-list">{data.dailyEntries.map((entry) => <button className="daily-entry" key={`${entry.kind}-${entry.id}`} onClick={() => onEntry(entry.entry)}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><span><b>{entry.studentName}</b><span>{entry.label}</span><small>{entry.detail}</small></span><span aria-hidden="true">›</span></button>)}</div> : <div className="empty compact-empty"><b>No entries for this date</b><p>Use the date controls to review another day.</p></div>}</section>{review.scheduledCount > 0 && <section className="section"><div className="warning"><b>{review.scheduledCount} sessions still scheduled</b><p>Confirm attendance or update status before wrapping up.</p><button onClick={onResolve}>Resolve on Today →</button></div></section>}<div className="sticky-action"><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div></>}</>;
+  return <>
+    <PageHeading eyebrow="Ledger history" title="Activity" />
+    <div className="activity-tabs" role="tablist" aria-label="Activity view">
+      <button role="tab" aria-selected={initialTab === "timeline"} className={initialTab === "timeline" ? "active" : ""} onClick={() => navigate({ tab: "timeline" })}>Timeline</button>
+      <button role="tab" aria-selected={initialTab === "day"} className={initialTab === "day" ? "active" : ""} onClick={() => navigate({ tab: "day", date: review.date })}>Day review</button>
+      <button role="tab" aria-selected={initialTab === "audit"} className={initialTab === "audit" ? "active" : ""} onClick={() => navigate({ tab: "audit" })}>Audit log</button>
+    </div>
+    {initialTab === "timeline" ? <>
+      <section className="timeline-filters" aria-label="Timeline filters"><label>Student<select value={initialFilters.student ?? ""} onChange={(event) => navigate({ student: event.target.value })}><option value="">All students</option>{data.students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}</select></label><label>Entry type<select value={initialFilters.type ?? "all"} onChange={(event) => navigate({ type: event.target.value })}><option value="all">All entries</option><option value="session">Sessions</option><option value="payment">Payments</option><option value="administrative">Administrative</option></select></label><label>From<input type="date" value={initialFilters.from ?? ""} onChange={(event) => navigate({ from: event.target.value })} /></label><label>To<input type="date" value={initialFilters.to ?? ""} onChange={(event) => navigate({ to: event.target.value })} /></label></section>
+      <section className="section"><div className="section-title"><h2>Ledger timeline</h2><span className="count">{timeline.length}</span></div>{timeline.length ? <div className="timeline-list">{timeline.map((item) => item.entry ? <button key={item.id} className="timeline-entry" onClick={() => onEntry(item.entry!)}><span className={`entry-kind ${item.kind}`}>{item.kind === "payment" ? "$" : "✓"}</span><span><b>{item.studentName}</b><span>{item.label}</span><small>{item.dateLabel} · {item.detail}</small></span><span aria-hidden="true">›</span></button> : <div key={item.id} className="timeline-entry"><span className="entry-kind administrative" aria-hidden="true">⚙</span><span><b>{item.label}</b><small>{item.dateLabel} · {item.detail}</small></span></div>)}</div> : <div className="empty"><b>No matching activity</b><p>Adjust the student, entry type, or date range filters.</p></div>}</section>
+    </> : initialTab === "audit" ? <AuditLog events={data.auditLog} filters={initialFilters} navigate={navigate} /> : <>
+      <div className="recap-date-nav"><button className="icon-button" aria-label="Previous day" onClick={() => onDateChange(shiftDate(review.date, -1))}>←</button><label className="date-control"><span className="sr-only">Recap date</span><input type="date" value={review.date} onChange={(event) => onDateChange(event.target.value)} /></label><button className="icon-button" aria-label="Next day" onClick={() => onDateChange(shiftDate(review.date, 1))}>→</button></div>
+      <div className={`review-state ${review.reviewed ? "done" : ""}`}><span>{review.reviewed ? "✓" : "○"}</span><div><b>{review.reviewed ? "Reviewed" : "Not reviewed yet"}</b><small>{review.reviewed ? "You can review again after later changes." : "Check the day’s entries before wrapping up."}</small></div></div>
+      <section className="metric-grid"><Metric label="Held" value={String(review.heldCount)} /><Metric label="No-show" value={String(review.noShowCount)} /><Metric label="Collected" value={money(review.collectedCents)} accent /><Metric label="Still scheduled" value={String(review.scheduledCount)} /></section>
+      <section className="section"><div className="section-title"><div><p className="eyebrow">Daily ledger</p><h2>Entries for this day</h2></div><span className="count">{data.dailyEntries.length}</span></div>{data.dailyEntries.length ? <div className="daily-entry-list">{data.dailyEntries.map((entry) => <button className="daily-entry" key={`${entry.kind}-${entry.id}`} onClick={() => onEntry(entry.entry)}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><span><b>{entry.studentName}</b><span>{entry.label}</span><small>{entry.detail}</small></span><span aria-hidden="true">›</span></button>)}</div> : <div className="empty compact-empty"><b>No entries for this date</b><p>Use the date controls to review another day.</p></div>}</section>
+      {review.scheduledCount > 0 && <section className="section"><div className="warning"><b>{review.scheduledCount} sessions still scheduled</b><p>Confirm attendance or update status before wrapping up.</p><button onClick={onResolve}>Resolve on Today →</button></div></section>}
+      <div className="sticky-action"><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div>
+    </>}
+  </>;
 }
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) { return <div className={`metric ${accent ? "accent" : ""}`}><small>{label}</small><strong>{value}</strong></div>; }
 
