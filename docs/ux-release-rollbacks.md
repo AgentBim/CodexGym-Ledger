@@ -22,14 +22,16 @@
 - Commit/tag: `f111ecf` / `chalktab-ux-release-4-safe-area`
 - Preview deployment: `dpl_ENtZao54LnNVb82kTECakGbD6QRm`
 - Preview URL: `chalktab-ekrlvyjv8-jelanis-projects-19609d5d.vercel.app`
-- Production remains unchanged pending physical iPhone verification.
+- Production deployment: `dpl_4TVoyR7febgyyoA1tPykK72UC73m`
+- Production URL: `chalktab-4qw64s86d-jelanis-projects-19609d5d.vercel.app`
+- Promoted after physical iPhone 16 Pro Max verification and reassigned to `chalktab.vercel.app`.
 
 ## Current production
 
-- Release 3 plus audit/auth fix deployment: `dpl_FXHfnVn9cevNW5teAoA3dYeYRJYH`
-- Immutable deployment URL: `chalktab-6uru5dbu3-jelanis-projects-19609d5d.vercel.app`
+- Release 4 safe-area deployment: `dpl_4TVoyR7febgyyoA1tPykK72UC73m`
+- Immutable deployment URL: `chalktab-4qw64s86d-jelanis-projects-19609d5d.vercel.app`
 - Production alias: `chalktab.vercel.app`
-- Production remains on the separated-login build while Release 4 is validated as a protected preview.
+- Production includes the separated login flows, URL-backed navigation, and iPhone safe-area protection.
 
 ## Rollback procedure
 
