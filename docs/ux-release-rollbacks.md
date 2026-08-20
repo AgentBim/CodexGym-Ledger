@@ -17,6 +17,13 @@
 | 3 — Activity and mobile | `codex/ux-release-3-activity` | `621cd65` / `chalktab-ux-release-3` | `dpl_ESTrcRQgLkXS1HCXgAGtxdSerJss` | `chalktab-d21clt0rp-jelanis-projects-19609d5d.vercel.app` |
 | 4 — Navigation continuity | `codex/ux-release-4-navigation` | `92e16a1` / `chalktab-ux-release-4` | `dpl_2iGkY3HYaTYf3ut5YWvBgTTQVKV3` | `chalktab-9temam9kv-jelanis-projects-19609d5d.vercel.app` |
 
+### Release 4 safe-area patch
+
+- Commit/tag: `f111ecf` / `chalktab-ux-release-4-safe-area`
+- Preview deployment: `dpl_ENtZao54LnNVb82kTECakGbD6QRm`
+- Preview URL: `chalktab-ekrlvyjv8-jelanis-projects-19609d5d.vercel.app`
+- Production remains unchanged pending physical iPhone verification.
+
 ## Current production
 
 - Release 3 plus audit/auth fix deployment: `dpl_FXHfnVn9cevNW5teAoA3dYeYRJYH`
