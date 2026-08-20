@@ -15,13 +15,14 @@
 | 1 — Ledger integrity | `codex/ux-release-1-ledger` | `c3169c9` / `chalktab-ux-release-1` | `dpl_8yndgCUgeapmJWFPDtpxajdJDXQw` | `chalktab-r0ce421ug-jelanis-projects-19609d5d.vercel.app` |
 | 2 — Template safety | `codex/ux-release-2-scheduling` | `5f76313` / `chalktab-ux-release-2` | `dpl_3tUAzPdFqMnQEmydKWY68Z8imjw1` | `chalktab-e39ds5nxm-jelanis-projects-19609d5d.vercel.app` |
 | 3 — Activity and mobile | `codex/ux-release-3-activity` | `621cd65` / `chalktab-ux-release-3` | `dpl_ESTrcRQgLkXS1HCXgAGtxdSerJss` | `chalktab-d21clt0rp-jelanis-projects-19609d5d.vercel.app` |
+| 4 — Navigation continuity | `codex/ux-release-4-navigation` | `92e16a1` / `chalktab-ux-release-4` | `dpl_2iGkY3HYaTYf3ut5YWvBgTTQVKV3` | `chalktab-9temam9kv-jelanis-projects-19609d5d.vercel.app` |
 
 ## Current production
 
-- Release 3 deployment: `dpl_7AMKSPGw3Zb8yKb1KVJXNUfnB2qR`
-- Immutable deployment URL: `chalktab-ovw11khz8-jelanis-projects-19609d5d.vercel.app`
+- Release 3 plus audit/auth fix deployment: `dpl_FXHfnVn9cevNW5teAoA3dYeYRJYH`
+- Immutable deployment URL: `chalktab-6uru5dbu3-jelanis-projects-19609d5d.vercel.app`
 - Production alias: `chalktab.vercel.app`
-- Promoted after the 30-test, typecheck, lint, production-build, database-ownership, advisor, and protected HTTPS checks passed.
+- Production remains on the separated-login build while Release 4 is validated as a protected preview.
 
 ## Rollback procedure
 
