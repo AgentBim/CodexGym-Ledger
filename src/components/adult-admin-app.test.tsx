@@ -337,4 +337,19 @@ describe("AdultAdminApp", () => {
     expect(screen.getAllByRole("button", { name: "Record payment" })[0]).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Manage student" })[0]).toBeInTheDocument();
   });
+
+  it("keeps primary navigation in the URL and follows browser history updates", async () => {
+    const { rerender } = render(<AdultAdminApp data={data} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
+    expect(push).toHaveBeenCalledWith("/?view=students");
+    expect(screen.getByRole("heading", { name: "Students" })).toBeInTheDocument();
+
+    rerender(<AdultAdminApp key="more" data={data} initialView="more" />);
+    expect(await screen.findByRole("heading", { name: "More" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "More" })[0]).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Today" })[0]!);
+    expect(push).toHaveBeenCalledWith("/");
+  });
 });

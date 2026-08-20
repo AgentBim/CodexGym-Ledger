@@ -23,5 +23,6 @@ export default async function HomePage({
 
   const selectedDate = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`)) ? date : undefined;
   const dashboard = await loadLedgerDashboard(selectedDate ? { today: selectedDate, periodEnd: selectedDate } : undefined);
-  return <AdultAdminApp data={toAdultAdminReadModel(dashboard)} initialView={view === "activity" ? "activity" : undefined} initialActivityTab={tab === "day" ? "day" : tab === "audit" ? "audit" : "timeline"} initialTimelineFilters={{ student: typeof student === "string" ? student : undefined, type: typeof type === "string" ? type : undefined, entity: typeof entity === "string" ? entity : undefined, action: typeof action === "string" ? action : undefined, from: typeof from === "string" ? from : undefined, to: typeof to === "string" ? to : undefined }} />;
+  const initialView = view === "students" || view === "activity" || view === "more" ? view : "today";
+  return <AdultAdminApp key={initialView} data={toAdultAdminReadModel(dashboard)} initialView={initialView} initialActivityTab={tab === "day" ? "day" : tab === "audit" ? "audit" : "timeline"} initialTimelineFilters={{ student: typeof student === "string" ? student : undefined, type: typeof type === "string" ? type : undefined, entity: typeof entity === "string" ? entity : undefined, action: typeof action === "string" ? action : undefined, from: typeof from === "string" ? from : undefined, to: typeof to === "string" ? to : undefined }} />;
 }

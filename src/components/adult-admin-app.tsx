@@ -245,7 +245,12 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setRosterStatus("active");
     setFilter("overdue");
     setQuery("");
-    setView("students");
+    navigateView("students");
+  }
+
+  function navigateView(nextView: View) {
+    setView(nextView);
+    router.push(nextView === "today" ? "/" : `/?view=${nextView}`);
   }
 
   async function confirmBulk() {
@@ -506,17 +511,17 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
 
   return (
     <div className="app-frame" aria-busy={isPending}>
-      <aside className="side-nav" aria-label="Primary navigation"><Brand />{navItems.map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} />)}</aside>
+      <aside className="side-nav" aria-label="Primary navigation"><Brand />{navItems.map((item) => <NavButton key={item.id} item={item} view={view} onNavigate={navigateView} />)}</aside>
       <div className="app-content">
         <header className="topbar"><Brand /><span className="save-state"><i /> {isPending ? "Saving…" : "All changes saved"}</span></header>
         <main id="main-content" className="main-content">
           {notice && <div className="review-state app-notice" role="status"><span aria-hidden="true">!</span><div><b>{notice}</b></div><button className="text-button" onClick={() => setNotice(null)}>Dismiss</button></div>}
-          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={viewStudent} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => setView("more")} onActivity={(type) => router.push(`/?view=activity&tab=timeline&type=${type}`)} onInactive={() => { setRosterStatus("active"); setView("students"); }} />}
+          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={viewStudent} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
-          {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/?${params.toString()}`)} onDateChange={(date) => router.push(`/?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => setView("today")} isPending={isPending} />}
+          {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/?${params.toString()}`)} onDateChange={(date) => router.push(`/?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => navigateView("today")} isPending={isPending} />}
           {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setModal("template"); }} />}
         </main>
-        <nav className="bottom-nav" aria-label="Primary navigation">{navItems.map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} />)}</nav>
+        <nav className="bottom-nav" aria-label="Primary navigation">{navItems.map((item) => <NavButton key={item.id} item={item} view={view} onNavigate={navigateView} />)}</nav>
       </div>
       {modal === "bulk" && <BulkDialog date={data.todayLabel} students={activeStudents} selected={selected} setSelected={setSelected} reviewing={bulkReviewing} setReviewing={setBulkReviewing} onClose={() => setModal(null)} onConfirm={confirmBulk} isPending={isPending} />}
       {modal === "payment" && <PaymentDialog date={data.todayDate} students={activeStudents} selectedStudentId={paymentStudentId} onClose={() => { setModal(null); setPaymentStudentId(null); setPaymentIdempotencyKey(null); }} onSubmit={submitPayment} isPending={isPending} />}
@@ -534,7 +539,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
 
 const navItems: { id: View; label: string; icon: string }[] = [{ id: "today", label: "Today", icon: "⌂" }, { id: "students", label: "Students", icon: "♙" }, { id: "activity", label: "Activity", icon: "≋" }, { id: "more", label: "More", icon: "•••" }];
 function Brand() { return <div className="brand"><span className="brand-mark">C</span><span><b>ChalkTab</b><small>Attendance & payments</small></span></div>; }
-function NavButton({ item, view, setView }: { item: typeof navItems[number]; view: View; setView: (v: View) => void }) { return <button className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined} onClick={() => setView(item.id)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>; }
+function NavButton({ item, view, onNavigate }: { item: typeof navItems[number]; view: View; onNavigate: (view: View) => void }) { return <button className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined} onClick={() => onNavigate(item.id)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>; }
 function PageHeading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: React.ReactNode }) { return <header className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{children}</header>; }
 function Balance({ student }: { student: StudentReadModel }) { return <span className={`balance ${student.balanceState}`}><span aria-hidden="true">{student.balanceState === "overdue" ? "▲" : student.balanceState === "credit" ? "↓" : student.balanceState === "settled" ? "✓" : "○"}</span>{balanceLabel(student)}</span>; }
 function Status({ value }: { value: SessionStatus | null }) { return <span className={`status ${(value ?? "unscheduled").replace("_", "")}`}>{statusLabel(value)}</span>; }
