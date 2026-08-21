@@ -16,6 +16,7 @@
 | 2 — Template safety | `codex/ux-release-2-scheduling` | `5f76313` / `chalktab-ux-release-2` | `dpl_3tUAzPdFqMnQEmydKWY68Z8imjw1` | `chalktab-e39ds5nxm-jelanis-projects-19609d5d.vercel.app` |
 | 3 — Activity and mobile | `codex/ux-release-3-activity` | `621cd65` / `chalktab-ux-release-3` | `dpl_ESTrcRQgLkXS1HCXgAGtxdSerJss` | `chalktab-d21clt0rp-jelanis-projects-19609d5d.vercel.app` |
 | 4 — Navigation continuity | `codex/ux-release-4-navigation` | `92e16a1` / `chalktab-ux-release-4` | `dpl_2iGkY3HYaTYf3ut5YWvBgTTQVKV3` | `chalktab-9temam9kv-jelanis-projects-19609d5d.vercel.app` |
+| 5 — Client statements | `codex/ux-release-5-statements` | `09fa798` / `chalktab-ux-release-5` | `dpl_GyGd8cHEnrbaom6wTkFKh2uTXBtV` | `chalktab-32ys4iote-jelanis-projects-19609d5d.vercel.app` |
 
 ### Release 4 safe-area patch
 
@@ -32,6 +33,7 @@
 - Immutable deployment URL: `chalktab-4qw64s86d-jelanis-projects-19609d5d.vercel.app`
 - Production alias: `chalktab.vercel.app`
 - Production includes the separated login flows, URL-backed navigation, and iPhone safe-area protection.
+- Release 5 remains a protected preview and has not changed the production alias.
 
 ## Rollback procedure
 
