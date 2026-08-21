@@ -278,6 +278,7 @@ describe("AdultAdminApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "View Asha Clarke" }));
     expect(screen.getByRole("dialog", { name: "Asha Clarke" })).toBeInTheDocument();
     expect(screen.getByText("Current balance")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Generate statement" })).toHaveAttribute("href", `/statements/${data.students[0]!.id}`);
   });
 
   it("corrects a payment immutably from the daily ledger", async () => {
