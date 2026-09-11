@@ -23,3 +23,25 @@ export async function refreshSupabaseSession(request: NextRequest, requestHeader
   await supabase.auth.getUser();
   return response;
 }
+
+/**
+ * Supabase stores browser sessions in a project-scoped cookie. Anonymous
+ * requests have nothing to refresh, so sending every page view (including
+ * crawlers and link prefetches) through Auth only creates avoidable traffic.
+ */
+export function hasSupabaseSessionCookie(request: NextRequest, projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  if (!projectUrl) return false;
+
+  let projectRef: string | undefined;
+  try {
+    projectRef = new URL(projectUrl).hostname.split(".")[0];
+  } catch {
+    return false;
+  }
+
+  if (!projectRef) return false;
+  const cookieName = `sb-${projectRef}-auth-token`;
+  return request.cookies
+    .getAll()
+    .some(({ name, value }) => Boolean(value) && (name === cookieName || name.startsWith(`${cookieName}.`)));
+}
