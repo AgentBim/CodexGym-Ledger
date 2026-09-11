@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
-import { refreshSupabaseSession } from "@/lib/supabase/proxy";
+import { NextResponse } from "next/server";
+import { hasSupabaseSessionCookie, refreshSupabaseSession } from "@/lib/supabase/proxy";
 
 export async function proxy(request: NextRequest) {
   const nonce = crypto.randomUUID().replaceAll("-", "");
@@ -20,7 +21,11 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", policy);
-  const response = await refreshSupabaseSession(request, requestHeaders);
+  // Do not contact Supabase for anonymous page views. Server actions still
+  // authenticate independently and Postgres remains protected by RLS.
+  const response = hasSupabaseSessionCookie(request)
+    ? await refreshSupabaseSession(request, requestHeaders)
+    : NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", policy);
   return response;
 }
