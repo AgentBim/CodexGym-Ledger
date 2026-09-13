@@ -3,7 +3,7 @@
 - Feature / acceptance criteria source: [FEAT-001 TASK-002](../features/FEAT-001-production-foundation.md#assignment-task-002-controlled-session-refresh-integration).
 - Implementer: Engineering lead acting as G0-04.
 - Verifier / independence declaration: Independent agent acting as G0-09; did not author the implementation and independently inspected and tested the exact source/test candidate.
-- Candidate identification: Branch `codex/g0-production-foundation-integration`, based on `ce4f0ae7d9ab44fa153c24f54f8f1bff8a32ea1d`; ordered four-file source/test SHA-256 manifest digest `eadf29a6c243807c92dcb9fb5d95f65c3a6b67c0baa1f0b8044f1ad57e5cbccc`.
+- Candidate identification: Implementation/evidence commit `059421928a3b9169887baef602166268728fdecd` on `codex/g0-production-foundation-integration`, based on `ce4f0ae7d9ab44fa153c24f54f8f1bff8a32ea1d`; ordered four-file source/test SHA-256 manifest digest `eadf29a6c243807c92dcb9fb5d95f65c3a6b67c0baa1f0b8044f1ad57e5cbccc`.
 - Environment / prerequisites / date: Local ChalkTab repository with pinned dependencies, Node.js/Next.js 16.2.12, Windows/PowerShell, 2026-09-13.
 
 | Criterion / check | Expected | Actual | Status | Evidence |
