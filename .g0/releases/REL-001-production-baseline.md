@@ -1,0 +1,17 @@
+# REL-001: Production reconciliation
+
+- Status: PLANNED
+- Target / environment: Vercel project `chalktab`; client-facing alias `chalktab.vercel.app`; separate Vercel default production aliases observed on 2026-09-13.
+- Candidate revision / digest: `chalktab.vercel.app` maps to deployment `dpl_4TVoyR7febgyyoA1tPykK72UC73m`, whose metadata references commit `f111ecf56a88f30b83d20f05fd7711d03067aad3`. Vercel's latest production deployment is separately `dpl_BcaQ3R5o67UPBPaFkeDZbc6k3vvi`; its connector metadata does not identify a source commit.
+- Included features and READY evidence: Candidate inclusion is not yet established. Release 4 navigation and iPhone safe-area work are recorded in [the legacy rollback record](../../docs/ux-release-rollbacks.md), but G0-independent READY evidence was not created because delivery predates G0 adoption.
+- Independent review / QA: Historical checks are in [the legacy QA report](../../docs/qa-report.md), but its status is stale and not sufficient as G0 evidence for the September production artifacts.
+- Configuration and dependencies: Vercel project `prj_DoHZtsSaTIaF1gc0RuqYOM53SN4W`, team `team_ADm4M0rB6ky5lqAvlJAk3NUL`; Next.js; three required environment key names are present in Preview and Production; Supabase project `mevsairosejypqqtfnum`. No secret values recorded.
+- Migration, backup and recovery prerequisites: Four migrations are present remotely; local filenames for the two template migrations use different timestamps than remote history. Backup plan, RPO/RTO, and restore rehearsal are unverified.
+- Rollback plan / trigger / owner: Existing deployment rollback points are listed in [the legacy rollback record](../../docs/ux-release-rollbacks.md). G0-11 owns alias rollback execution under an approved runbook; ledger data must never be deleted or reversed merely to roll back UI behavior.
+- Founder approval or applicable standing policy: Historical production actions predate G0 records. No standing release policy exists. This record does not grant new production authority.
+- Planned window / executor: Not scheduled. G0-11 is a proposed executor pending a complete delegation and exact-candidate reconciliation.
+- Actual delivery time / artifact / destination: No delivery belongs to this PLANNED release record. As historical observations only, Release 4 client alias deployment was created 2026-08-20 and remains READY, while Vercel project production deployment `dpl_BcaQ3R5o67UPBPaFkeDZbc6k3vvi` was created 2026-09-11 and is READY at `adult-gym-admin.vercel.app` and `chalktab-jelanis-projects-19609d5d.vercel.app`.
+- Smoke checks and evidence: Required before this record can become SUCCEEDED. Current evidence is limited to Vercel reporting the historical deployments READY on 2026-09-13 and no project runtime error clusters for the prior 7 days. Authenticated exact-artifact functional smoke was not run during bootstrap.
+- Monitoring / measurement owner: Unassigned; G0-11/G0-12 proposal required.
+- Outcome, incident or rollback link: No active incident observed. Split production identity and missing source metadata are HIGH release-governance risks in [FEAT-001](../features/FEAT-001-production-foundation.md).
+- Follow-up actions: G0-11 identifies the intended canonical alias/artifact and rollback target; G0-04 reconciles remote main, latest deployment, and local Release 5 history; G0-07 reconciles migrations and recovery evidence.
