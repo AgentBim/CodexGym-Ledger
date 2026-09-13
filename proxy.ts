@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
-import { refreshSupabaseSession } from "@/lib/supabase/proxy";
+import { NextResponse } from "next/server";
+import { hasSupabaseSessionCookie, refreshSupabaseSession } from "./src/lib/supabase/proxy";
 
 export async function proxy(request: NextRequest) {
   const nonce = crypto.randomUUID().replaceAll("-", "");
@@ -20,7 +21,9 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", policy);
-  const response = await refreshSupabaseSession(request, requestHeaders);
+  const response = hasSupabaseSessionCookie(request)
+    ? await refreshSupabaseSession(request, requestHeaders)
+    : NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", policy);
   return response;
 }

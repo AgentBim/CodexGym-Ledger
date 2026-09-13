@@ -23,3 +23,21 @@ export async function refreshSupabaseSession(request: NextRequest, requestHeader
   await supabase.auth.getUser();
   return response;
 }
+
+/** Returns true only when this Supabase project's session cookie has a value. */
+export function hasSupabaseSessionCookie(request: NextRequest, projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  if (!projectUrl) return false;
+
+  let projectRef: string | undefined;
+  try {
+    projectRef = new URL(projectUrl).hostname.split(".")[0];
+  } catch {
+    return false;
+  }
+
+  if (!projectRef) return false;
+  const cookieName = `sb-${projectRef}-auth-token`;
+  return request.cookies
+    .getAll()
+    .some(({ name, value }) => Boolean(value) && (name === cookieName || name.startsWith(`${cookieName}.`)));
+}

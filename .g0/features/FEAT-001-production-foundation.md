@@ -1,8 +1,8 @@
 # FEAT-001: Production foundation
 
 - Owner / requester: Founder / G0-00; proposed owners G0-04, G0-07, G0-10, G0-11
-- State: SPECIFIED
-- Blocked: Yes; G0-11 must reconcile source and production aliases, G0-07 must propose Preview isolation and recovery, and implementation approval must be recorded before BUILDING.
+- State: BUILDING
+- Blocked: Yes; TASK-002 source integration is authorized, but canonical aliases, Preview isolation, recovery, security disposition, and full release evidence remain unresolved.
 - Disposition: Active; stop-ship foundation before broader real-client use.
 - Problem and intended outcome: ChalkTab's ledger architecture is strong, but source, environment, retry, recovery, auth, and release evidence do not yet establish a reproducible production candidate. Create a clean, isolated, recoverable, monitored release path.
 - Scope / exclusions: Source/release reconciliation, protected branch and exact-SHA CI, Preview/Production data isolation, stable mutation idempotency, backup/restore evidence, auth/CSP/origin hardening, authenticated E2E/accessibility/concurrency tests, monitoring and canonical aliases. Excludes feature expansion, paid provisioning without approval, destructive database changes, and production promotion.
@@ -11,13 +11,13 @@
 - Selected lifecycle stages / omissions and rationale: DEFINE, ARCHITECT, BUILD, VERIFY, SHIP, and MEASURE are required. DISCOVER reuses the 2026-08-21 startup-team assessment. DESIGN is limited to error/retry states. Production SHIP remains gated.
 - Design / architecture / ADRs: [Architecture](../../docs/architecture.md), [deployment runbook](../../docs/deployment-runbook.md), [PROJECT.md](../PROJECT.md). New architecture/privacy/cost choices require ADRs and gate reassessment.
 - Founder gate assessment: G0 bootstrap is approved. Preview isolation that changes trust boundaries, any paid service, significant auth/privacy change, destructive database action, and production launch require explicit Founder approval unless a narrower recorded standing policy applies.
-- Authorization / approval record: SPECIFIED by G0-00 from the Founder-authorized bootstrap and evidence review on 2026-09-13. Authorization to implement routine no-cost documentation/tests is not a production or architecture approval. Remaining gated choices are PENDING.
-- Implementation owner / independent reviewer / independent verifier: No implementation assignment is active. G0-04/G0-07/G0-10/G0-11 are proposed implementers by capability, and G0-09 is the proposed independent verifier. G0-00 must record complete task-level delegations before work begins; implementers cannot be sole reviewers.
+- Authorization / approval record: SPECIFIED by G0-00 from the Founder-authorized bootstrap and evidence review on 2026-09-13. After TASK-001 was presented with the next action "Authorize controlled source integration," the Founder's response `continue` on 2026-09-13 authorizes only TASK-002's no-cost branch-local source/test integration. It does not authorize Preview provisioning, production deployment, alias changes, database changes, paid services, or significant architecture/privacy changes. Remaining gated choices are PENDING.
+- Implementation owner / independent reviewer / independent verifier: Engineering lead acting as G0-04 owns TASK-002 implementation. An independent G0-09 agent verifies the exact candidate; the implementer cannot be sole reviewer. G0-07/G0-10 implementation work is not active.
 - Assignment scope, inputs, access limits, output, stop condition: Proposed bounds only, not an active assignment - use the exact repository revisions, Vercel/Supabase read-only evidence, and pinned Core; write evidence to this feature or linked ADR/QA/release records; do not expose secret values, use production data for Preview testing, incur cost, change security/privacy boundaries, or promote production without applicable approval; stop on any unexplained ledger discrepancy or cross-owner exposure.
-- Candidate artifact / revision: None.
-- Author checks: Specification cross-checked against live read-only Vercel/Supabase evidence on 2026-09-13; implementation checks not run.
-- Independent review: Pending exact candidate.
-- QA report: Pending.
+- Candidate artifact / revision: TASK-002 source/test bundle on `codex/g0-production-foundation-integration`, digest `eadf29a6c243807c92dcb9fb5d95f65c3a6b67c0baa1f0b8044f1ad57e5cbccc`; commit SHA to be recorded after the reviewed bundle is committed.
+- Author checks: TASK-002 focused tests, typecheck, lint, full tests, production build, and whitespace checks passed; see author evidence below.
+- Independent review: TASK-002 independently verified PASS by G0-09 against the exact source/test digest; broader FEAT-001 review remains pending.
+- QA report: [QA-003](../qa/QA-003-task-002-session-refresh.md) passes TASK-002 only.
 - Residual defects / risk disposition: HIGH - split production identity, non-reproducible deployment/source mapping, absent Preview data isolation, unverified recovery, and incomplete retry/E2E evidence. No risk acceptance recorded.
 - Release: No release candidate. Production promotion not approved.
 - Measurement and follow-up: G0-04/G0-11 first reconcile source and deployment facts; G0-00 then seeks only the Founder decisions needed for environment cost/trust and release policy.
@@ -28,6 +28,7 @@
 | --- | --- | --- | --- | --- |
 | 2026-09-13 | G0-00 | - -> PROPOSED | Startup-team audit identified production-control gaps. | Team assessment summarized in PROJECT_STATE.md |
 | 2026-09-13 | G0-00 | PROPOSED -> SPECIFIED | Scope, acceptance criteria, gates, owners, risks, and evidence were recorded during G0 bootstrap. | Founder-authorized bootstrap; live read-only checks |
+| 2026-09-13 | G0-00 | SPECIFIED -> BUILDING | Founder continued with the presented controlled source-integration step after TASK-001 passed. | TASK-002 approval record below; no production authority |
 
 ## Handoff and dissent
 
@@ -59,3 +60,27 @@ Proposed handoff is pending, not assigned: G0-04/G0-11 for source/deployment rec
 - Rollback boundaries: Before integration, abandon the integration branch with no production effect. Before deployment, use a new corrective branch without touching aliases/data. After preview, retire only the preview. After an approved promotion, reassign affected aliases to a specifically approved known-good deployment. Never down-migrate, delete ledger/audit rows, or reapply the mismatched template migrations; database remediation is forward-only.
 - Unknowns: Exact source for `dpl_BcaQ3R5o67UPBPaFkeDZbc6k3vvi`; byte/semantic equality of local and applied migrations; whether overlapping `45a06c9` changes are already superseded; canonical production alias decision. The alias inventory was exhaustive on 2026-09-13 but can drift afterward.
 - Handoff / state-change confirmation: Report handed to and accepted by G0-00 after independent G0-09 verification in [QA-002](../qa/QA-002-task-001-reconciliation.md). Only the required `.g0` evidence records changed. No application source, refs, deployments, aliases, environment variables, Supabase configuration, migrations, or customer rows changed during TASK-001. Acceptance recognizes the integration path as a proposal only and grants no implementation or production authority.
+
+## Assignment TASK-002: Controlled session-refresh integration
+
+- Objective: Port the useful anonymous-request Supabase session-refresh guard from remote commit `45a06c94fc05f77c71554610b2e6cd80a1258411` into the newer ChalkTab source while preserving current CSP, UI, authentication boundaries, and ledger behavior.
+- Scope and exclusions: Branch-local edits limited to the app-level proxy, Supabase proxy helper, focused tests, and required G0 evidence. Do not port the remote prototype UI changes. Excludes dependencies, migrations, environment values, Supabase/Vercel/GitHub settings, Preview provisioning, deployment, alias changes, production data, and customer-row inspection.
+- Role / owner: Engineering lead acting as G0-04.
+- Inputs and source revisions: Branch `codex/g0-production-foundation-integration` created from verified reconciliation commit `ce4f0ae`; source intent from remote `45a06c9`; current files `proxy.ts`, `src/lib/supabase/proxy.ts`, `vitest.setup.ts`; official Supabase SSR guidance reviewed on 2026-09-13.
+- Acceptance criteria: 1. Anonymous requests bypass the Supabase Auth refresh call while retaining CSP and forwarded request headers. 2. Valid unchunked and chunked project-scoped session cookies still invoke refresh. 3. Empty, malformed-project, and other-project cookies do not invoke refresh. 4. Existing auth, UI, and ledger behavior is unchanged outside this guard. 5. Focused tests plus full lint, typecheck, unit tests, and production build pass. 6. Independent G0-09 review verifies the exact candidate before any READY claim.
+- Output location: Source/test changes on the integration branch; author evidence and independent verdict appended here and in a linked QA record.
+- Tools / access limits: Local source, tests, installed dependencies, read-only official documentation, and read-only Git comparison. No secret values, customer rows, external configuration writes, or production access.
+- Dependencies / approvals: Founder response `continue` after the presented controlled-integration next step authorizes this bounded no-cost task. All production and other Founder gates remain pending.
+- Review / verifier owner: Independent G0-09 agent; implementation owner cannot self-verify.
+- Timebox / stop condition: One focused implementation and review cycle. Stop if the optimization weakens authorization, loses required cookie propagation/CSP headers, requires dependency/schema/config changes, or cannot pass the existing verification suite.
+- Handoff recipient: G0-00 with exact files, tests, limitations, and confirmation of no external/product-state mutation.
+
+### TASK-002 author evidence and handoff
+
+- Date / owner / status: 2026-09-13 / engineering lead acting as G0-04 / bounded implementation and author checks complete; independently verified PASS in [QA-003](../qa/QA-003-task-002-session-refresh.md).
+- Candidate identification: Branch `codex/g0-production-foundation-integration` from `ce4f0ae`; source/test bundle SHA-256 digest `eadf29a6c243807c92dcb9fb5d95f65c3a6b67c0baa1f0b8044f1ad57e5cbccc`, covering `proxy.ts`, `proxy.test.ts`, `src/lib/supabase/proxy.ts`, and `src/lib/supabase/proxy.test.ts` in that order.
+- Implemented behavior: The app proxy now calls Supabase session refresh only when a non-empty unchunked or chunked cookie matches the configured project's `sb-<project-ref>-auth-token` name. Anonymous, empty, malformed-project, and other-project cases return `NextResponse.next` while preserving the existing nonce, CSP response header, and forwarded CSP/request headers. Authorization remains in server actions and Postgres RLS.
+- Exact source/test files: Modified `proxy.ts` and `src/lib/supabase/proxy.ts`; added `proxy.test.ts` and `src/lib/supabase/proxy.test.ts`. No UI, `vitest.setup.ts`, migration, dependency, lockfile, or environment file changed for TASK-002.
+- Author checks: Focused Vitest passed 2 files / 12 tests. Full TypeScript passed; ESLint passed with zero warnings; full Vitest passed 8 files / 49 tests; Next.js 16.2.12 production build passed and generated all expected routes; `git diff --check` reported no whitespace errors, only existing LF-to-CRLF notices.
+- Limitations / independent gate: No authenticated browser, isolated Preview, production, external service, or customer-data test was performed. The refresh network call is mocked in tests. FEAT-001 remains BUILDING and blocked on its other acceptance criteria; no READY or release claim is made.
+- Handoff / state-change confirmation: Handed to and accepted by G0-00 after independent G0-09 verification in [QA-003](../qa/QA-003-task-002-session-refresh.md). No dependency installation, migration, database/customer-row access, environment or external-service configuration, deployment, production access, or alias change occurred.
