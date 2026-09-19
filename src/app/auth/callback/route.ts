@@ -23,11 +23,13 @@ export async function GET(request: Request) {
   const requestedNext = url.searchParams.get("next");
   const next = requestedNext === "/update-password" ? requestedNext : "/";
 
+  const reason = requestedNext === "/update-password" ? "reset" : "oauth";
+
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(new URL(next, origin));
   }
 
-  return NextResponse.redirect(new URL("/auth/error", origin));
+  return NextResponse.redirect(new URL(`/auth/error?reason=${reason}`, origin));
 }
