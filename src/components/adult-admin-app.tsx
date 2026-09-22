@@ -15,6 +15,8 @@ export type StudentReadModel = {
   balanceCents: number;
   balanceState: BalanceState;
   todaySessionStatus: SessionStatus | null;
+  todaySessionId?: string | null;
+  todaySessionVersion?: number | null;
   lastAttendedOn: string | null;
   defaultRateCents?: number;
   notes?: string | null;
@@ -182,7 +184,7 @@ function shiftDate(value: string, days: number) {
 export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "today", initialActivityTab = "timeline", initialTimelineFilters = {} }: { data?: AdultAdminReadModel; initialView?: View; initialActivityTab?: "timeline" | "day" | "audit"; initialTimelineFilters?: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string } }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
-  const [modal, setModal] = useState<"bulk" | "payment" | "session" | "entry" | "student" | "studentDetail" | "archive" | "template" | "templateArchive" | null>(null);
+  const [modal, setModal] = useState<"bulk" | "payment" | "session" | "entry" | "student" | "studentDetail" | "archive" | "template" | "templateArchive" | "quickAction" | null>(null);
   const [editingStudent, setEditingStudent] = useState<StudentReadModel | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<TemplateReadModel | null>(null);
   const [editingEntry, setEditingEntry] = useState<StudentHistoryEntryReadModel | null>(null);
@@ -194,12 +196,17 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkReviewing, setBulkReviewing] = useState(false);
   const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string | null>(null);
+  const [quickActionStudentId, setQuickActionStudentId] = useState<string | null>(null);
+  const [quickHeldIdempotencyKey, setQuickHeldIdempotencyKey] = useState<string | null>(null);
+  const [quickNoShowIdempotencyKey, setQuickNoShowIdempotencyKey] = useState<string | null>(null);
+  const [quickCanceledIdempotencyKey, setQuickCanceledIdempotencyKey] = useState<string | null>(null);
   const [undo, setUndo] = useState<UndoState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const activeStudents = useMemo(() => data.students.filter((student) => !student.archived), [data.students]);
   const filtered = useMemo(() => data.students.filter((student) => Boolean(student.archived) === (rosterStatus === "archived") && student.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || student.balanceState === filter)), [data.students, filter, query, rosterStatus]);
+  const quickActionStudent = data.students.find((student) => student.id === quickActionStudentId) ?? null;
 
   useEffect(() => {
     if (!undo) return;
@@ -235,6 +242,14 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setModal("payment");
   }
 
+  function openQuickAction(student: StudentReadModel) {
+    setQuickActionStudentId(student.id);
+    setQuickHeldIdempotencyKey(freshIdempotencyKey());
+    setQuickNoShowIdempotencyKey(freshIdempotencyKey());
+    setQuickCanceledIdempotencyKey(freshIdempotencyKey());
+    setModal("quickAction");
+  }
+
 
   function openSession(studentId?: string) {
     setSessionStudentId(studentId ?? activeStudents[0]?.id ?? null);
@@ -263,6 +278,31 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       const id = operationId(result);
       setModal(null);
       if (id) setUndo({ operationId: id, message: `${selected.length} students marked held` });
+      router.refresh();
+    } catch { setNotice("The attendance could not be saved. Please try again."); }
+    finally { setIsPending(false); }
+  }
+
+  async function setTodayAttendance(student: StudentReadModel, status: SessionStatus) {
+    const key = status === "held" ? quickHeldIdempotencyKey : status === "no_show" ? quickNoShowIdempotencyKey : quickCanceledIdempotencyKey;
+    setNotice(null);
+    setIsPending(true);
+    try {
+      const result = await saveSession({
+        idempotencyKey: key ?? freshIdempotencyKey(),
+        sessionId: student.todaySessionId ?? null,
+        studentId: student.id,
+        sessionDate: data.todayDate,
+        status,
+        void: false,
+        voidReason: null,
+        expectedVersion: student.todaySessionVersion ?? null,
+      });
+      const error = resultMessage(result);
+      if (error) return setNotice(error);
+      setModal(null);
+      setQuickActionStudentId(null);
+      setNotice(`${student.name} marked ${statusLabel(status).toLowerCase()}`);
       router.refresh();
     } catch { setNotice("The attendance could not be saved. Please try again."); }
     finally { setIsPending(false); }
@@ -516,7 +556,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
         <header className="topbar"><Brand /><span className="save-state"><i /> {isPending ? "Saving…" : "All changes saved"}</span></header>
         <main id="main-content" className="main-content">
           {notice && <div className="review-state app-notice" role="status"><span aria-hidden="true">!</span><div><b>{notice}</b></div><button className="text-button" onClick={() => setNotice(null)}>Dismiss</button></div>}
-          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={viewStudent} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
+          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
           {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/?${params.toString()}`)} onDateChange={(date) => router.push(`/?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => navigateView("today")} isPending={isPending} />}
           {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setModal("template"); }} />}
@@ -528,6 +568,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       {modal === "session" && <SessionDialog date={data.todayDate} students={activeStudents} selectedStudentId={sessionStudentId} onClose={() => { setModal(null); setSessionStudentId(null); }} onSubmit={submitSession} isPending={isPending} />}
       {modal === "entry" && editingEntry && <EntryDialog entry={editingEntry} student={data.students.find((student) => student.id === editingEntry.studentId)} error={formError} onClose={() => { setModal(null); setEditingEntry(null); setFormError(null); }} onSubmit={submitEntry} isPending={isPending} />}
       {modal === "studentDetail" && editingStudent && <StudentDetailDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); }} onPay={() => openPayment(editingStudent.id)} onSession={() => openSession(editingStudent.id)} onEdit={() => setModal("student")} onEntry={openEntry} />}
+      {modal === "quickAction" && quickActionStudent && <QuickActionSheet student={quickActionStudent} todayLabel={data.todayLabel} onClose={() => { setModal(null); setQuickActionStudentId(null); }} onMark={(status) => setTodayAttendance(quickActionStudent, status)} onPay={() => openPayment(quickActionStudent.id)} onViewProfile={() => viewStudent(quickActionStudent)} isPending={isPending} />}
       {modal === "student" && <StudentDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); }} onSubmit={submitStudent} onArchive={editingStudent?.version && !editingStudent.archived ? () => setModal("archive") : undefined} onRestore={editingStudent?.version && editingStudent.archived ? restoreStudent : undefined} isPending={isPending} />}
       {modal === "archive" && editingStudent && <ArchiveStudentDialog student={editingStudent} onClose={() => setModal("student")} onConfirm={archiveStudent} isPending={isPending} />}
       {modal === "template" && <TemplateDialog template={editingTemplate} students={activeStudents} defaultDate={data.todayDate} onClose={() => { setModal(null); setEditingTemplate(null); }} onSubmit={submitTemplate} onToggle={editingTemplate ? () => setTemplateState(editingTemplate, { paused: !editingTemplate.paused }) : undefined} onArchive={editingTemplate ? () => setModal("templateArchive") : undefined} isPending={isPending} />}
@@ -705,6 +746,21 @@ function PaymentDialog({ date, students, selectedStudentId, onClose, onSubmit, i
 
 function SessionDialog({ date, students, selectedStudentId, onClose, onSubmit, isPending }: { date: string; students: StudentReadModel[]; selectedStudentId: string | null; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; isPending: boolean }) {
   return <DialogShell title="Log session" description="Record a past, current, or future session. Only held sessions count toward the balance." onClose={onClose}><form onSubmit={onSubmit} className="entry-form"><label htmlFor="session-student">Student</label><select id="session-student" name="student" defaultValue={selectedStudentId ?? students[0]?.id} required>{students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}</select><label htmlFor="session-date">Date</label><input id="session-date" name="date" type="date" defaultValue={date} required /><label htmlFor="session-status">Status</label><select id="session-status" name="status" defaultValue="held" required><option value="scheduled">Scheduled</option><option value="held">Held</option><option value="canceled">Canceled</option><option value="no_show">No-show</option></select><div className="sheet-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={isPending || !students.length} type="submit">{isPending ? "Saving…" : "Save session"}</button></div></form></DialogShell>;
+}
+
+function QuickActionSheet({ student, todayLabel, onClose, onMark, onPay, onViewProfile, isPending }: { student: StudentReadModel; todayLabel: string; onClose: () => void; onMark: (status: SessionStatus) => void; onPay: () => void; onViewProfile: () => void; isPending: boolean }) {
+  const hasTodaySession = Boolean(student.todaySessionId);
+  return <DialogShell title={student.name} description={`${todayLabel} · Currently: ${statusLabel(student.todaySessionStatus)}`} onClose={onClose}>
+    <div className="quick-action-list">
+      {hasTodaySession && <>
+        <button type="button" className="quick-action-btn brand" disabled={isPending} onClick={() => onMark("held")}><span className="quick-action-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>Mark attended</button>
+        <button type="button" className="quick-action-btn warn" disabled={isPending} onClick={() => onMark("no_show")}><span className="quick-action-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 4l9 16H3L12 4z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><path d="M12 10v4M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></span>No-show</button>
+        <button type="button" className="quick-action-btn danger" disabled={isPending} onClick={() => onMark("canceled")}><span className="quick-action-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" /><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></span>Cancel class</button>
+      </>}
+      <button type="button" className="quick-action-btn neutral" disabled={isPending} onClick={onPay}><span className="quick-action-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.4-5 3.2c0 1.9 1.8 2.8 5 3.3 3.2.5 5 1.4 5 3.3 0 1.8-2.2 3.2-5 3.2s-5-1.6-5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></span>Log a payment</button>
+      <button type="button" className="quick-action-btn neutral" disabled={isPending} onClick={onViewProfile}><span className="quick-action-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.3" stroke="currentColor" strokeWidth="2" /><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></span>View profile</button>
+    </div>
+  </DialogShell>;
 }
 
 function StudentDetailDialog({ student, onClose, onPay, onSession, onEdit, onEntry }: { student: StudentReadModel; onClose: () => void; onPay: () => void; onSession: () => void; onEdit: () => void; onEntry: (entry: StudentHistoryEntryReadModel) => void }) {
