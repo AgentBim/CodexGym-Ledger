@@ -32,6 +32,8 @@ pnpm build
 
 CI performs the same checks with a frozen lockfile. It never applies migrations or deploys.
 
+`supabase/tests/package_rpcs.sql` exercises the draft package schema and RPCs (package drawing, idempotency, undo, archiving, owner isolation, and anon denial). Run it only against a throwaway local Postgres, following the instructions at the top of the file; it is not part of CI.
+
 ## Environment variables
 
 - `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL; public by design.
