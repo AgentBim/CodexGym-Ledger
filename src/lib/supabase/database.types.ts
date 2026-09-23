@@ -2,6 +2,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 
 export type SessionStatus = "scheduled" | "held" | "canceled" | "no_show";
 export type PaymentMethod = "cash" | "transfer" | "other";
+export type PackageKind = "class_pack" | "time_based";
 
 type BaseRow = {
   id: string;
@@ -24,6 +25,7 @@ export type SessionRow = BaseRow & {
   session_date: string;
   status: SessionStatus;
   charge_rate_cents: number | null;
+  student_package_id: string | null;
   occurrence_number: number;
   source: "manual" | "bulk_attendance" | "recurrence";
   manually_edited_at: string | null;
@@ -46,6 +48,33 @@ export type PaymentRow = BaseRow & {
   updated_at: string;
 };
 
+export type PackageDefinitionRow = BaseRow & {
+  name: string;
+  description: string | null;
+  kind: PackageKind;
+  class_count: number | null;
+  price_cents: number;
+  validity_weeks: number | null;
+  archived_at: string | null;
+  updated_at: string;
+};
+
+export type StudentPackageRow = BaseRow & {
+  student_id: string;
+  package_definition_id: string;
+  name: string;
+  kind: PackageKind;
+  class_count: number | null;
+  price_cents: number;
+  purchased_on: string;
+  starts_on: string;
+  ends_on: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+  created_operation_id: string;
+  updated_at: string;
+};
+
 type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
   Row: Row;
   Insert: Insert;
@@ -59,6 +88,8 @@ export type Database = {
       students: Table<StudentRow>;
       sessions: Table<SessionRow>;
       payments: Table<PaymentRow>;
+      package_definitions: Table<PackageDefinitionRow>;
+      student_packages: Table<StudentPackageRow>;
       recurring_session_templates: Table<Record<string, unknown>>;
       mutation_operations: Table<Record<string, unknown>>;
       audit_events: Table<Record<string, unknown>>;
@@ -82,10 +113,23 @@ export type Database = {
         Args: { p_idempotency_key: string; p_request_hash: string; p_operation_id: string };
         Returns: Json;
       };
+      create_package_definition: {
+        Args: { p_idempotency_key: string; p_request_hash: string; p_name: string; p_description: string | null; p_kind: PackageKind; p_class_count: number | null; p_price_cents: number; p_validity_weeks: number | null; p_active?: boolean };
+        Returns: Json;
+      };
+      set_package_archived: {
+        Args: { p_idempotency_key: string; p_request_hash: string; p_package_definition_id: string; p_expected_version: number; p_archived: boolean };
+        Returns: Json;
+      };
+      assign_package: {
+        Args: { p_idempotency_key: string; p_request_hash: string; p_student_id: string; p_package_definition_id: string; p_starts_on: string; p_ends_on?: string | null };
+        Returns: Json;
+      };
     };
     Enums: {
       session_status: SessionStatus;
       payment_method: PaymentMethod;
+      package_kind: PackageKind;
       session_source: "manual" | "bulk_attendance" | "recurrence";
       operation_state: "started" | "completed" | "failed";
     };

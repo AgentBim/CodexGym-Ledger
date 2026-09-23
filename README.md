@@ -6,7 +6,7 @@ Mobile-first Next.js app for adult gymnastics attendance and per-session BBD pay
 
 This repository is **not release-ready**. The UI still uses an in-memory demo adapter, several audited mutation RPCs are incomplete, the SQL is an unapplied draft, and the executable QA suite is blocked until dependencies are repaired. Do not enter real student/payment data or deploy this build.
 
-The ChalkTab UI (today's class, attendance, class summary, activity, student profiles, and packages/credits) runs entirely on the in-memory store in `src/components/chalktab/store.ts`. Packages and terms are not yet part of the draft SQL schema or server actions.
+The ChalkTab UI (today's class, attendance, class summary, activity, student profiles, and packages/credits) runs entirely on the in-memory store in `src/components/chalktab/store.ts`. The draft SQL and server actions now define packages (`package_definitions`, `student_packages`, `create_package_definition`, `set_package_archived`, `assign_package`, and package drawing in `bulk_mark_attended`), but the UI is not wired to them yet.
 
 ## Local setup
 

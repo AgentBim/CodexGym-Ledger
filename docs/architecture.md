@@ -38,6 +38,14 @@ An occurrence has a Barbados `session_date`, status, `charge_rate_cents`, proven
 
 Stores a positive integer amount, Barbados date, constrained method, and void metadata. Corrections void the old payment and create a replacement in one operation; updates that rewrite financial history are not part of the application contract.
 
+### `package_definitions` and `student_packages`
+
+A package definition is something the coach sells: a class pack (`class_count` classes) or a time-based pass (unlimited classes, `class_count` null), with a price in cents and optional `validity_weeks`. Definitions are archived, never deleted; archiving stops new assignments only.
+
+Assigning a package creates a `student_packages` row that snapshots the name, kind, class count, and price, records the Barbados `purchased_on` date, and holds a `starts_on`/optional `ends_on` validity window. The client proposes the window (the UI defaults the end to start + validity); price and size always come from the server-side definition.
+
+When a session becomes held, `claim_student_package` picks a live package that is valid on the session date and not used up, soonest `ends_on` first (then oldest), locking candidate rows before counting usage so concurrent attendance cannot overdraw a pack. The session stores `student_package_id` and a zero `charge_rate_cents`; otherwise it charges the student's rate as before. Usage is derived by counting live held sessions per package, so voiding or undoing a session returns its class automatically. Undoing an assignment is refused while any live session still draws from it.
+
 ### `mutation_operations`, `audit_events`, and `daily_reviews`
 
 Every mutation starts with an owner-scoped operation carrying a client-generated UUID idempotency key, kind, request hash, 10-minute undo expiry, and completion state. Reusing a key with the same hash returns the prior result; a different hash is an idempotency conflict. Bulk attendance shares one operation ID.
@@ -52,12 +60,13 @@ Balances and summaries are derived, never stored:
 
 ```text
 balance = Σ(non-void held session charge_rate_cents)
+        + Σ(non-void student package price_cents)
         − Σ(non-void payment amount_cents)
 ```
 
-Positive is “Owes”, zero “Settled”, negative “Credit”. Aggregate owed sums only positive student balances; credits are separately summed as absolute negative balances. As-of-period-end calculations include active held charges and payments dated on or before the end date. Period collection and attendance metrics additionally constrain dates to the range.
+Positive is “Owes”, zero “Settled”, negative “Credit”. Aggregate owed sums only positive student balances; credits are separately summed as absolute negative balances. Package charges are dated by `purchased_on`. As-of-period-end calculations include active held charges, package charges, and payments dated on or before the end date. Period collection and attendance metrics additionally constrain dates to the range.
 
-MVP overdue is derived when current balance is positive and cumulative held charges before Barbados today exceed cumulative active payments under oldest-charge-first display allocation. This can be computed with grouped queries at the expected scale. Add a security-invoker view or stable SQL function only after its query and RLS behavior are covered by tests; do not use a default owner-bypassing view.
+MVP overdue is derived when current balance is positive and cumulative held and package charges before Barbados today exceed cumulative active payments under oldest-charge-first display allocation. This can be computed with grouped queries at the expected scale. Add a security-invoker view or stable SQL function only after its query and RLS behavior are covered by tests; do not use a default owner-bypassing view.
 
 ## Mutation contracts and concurrency
 
