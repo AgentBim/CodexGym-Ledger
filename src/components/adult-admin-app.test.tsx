@@ -26,12 +26,12 @@ const data: AdultAdminReadModel = {
   todayDate: "2026-07-31",
   todayLabel: "Friday, 31 July",
   students: [
-    { id: "11111111-1111-4111-8111-111111111111", name: "Asha Clarke", balanceCents: 6000, balanceState: "overdue", todaySessionStatus: "scheduled", lastAttendedOn: "24 Jul", defaultRateCents: 3000, notes: "Evening class", version: 2, history: [
+    { id: "11111111-1111-4111-8111-111111111111", name: "Asha Clarke", balanceCents: 6000, balanceState: "overdue", todaySessionStatus: "scheduled", todaySessionId: "aaaaaaaa-1111-4111-8111-111111111111", todaySessionVersion: 3, lastAttendedOn: "24 Jul", defaultRateCents: 3000, notes: "Evening class", version: 2, history: [
       { id: "payment-history", kind: "payment", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false },
       { id: "session-history", kind: "session", dateLabel: "24 Jul 2026", label: "Held session", detail: "BBD $30.00 charge", voided: false },
     ] },
-    { id: "22222222-2222-4222-8222-222222222222", name: "Joel Best", balanceCents: -1000, balanceState: "credit", todaySessionStatus: "held", lastAttendedOn: "31 Jul", defaultRateCents: 2500, notes: null, version: 1 },
-    { id: "33333333-3333-4333-8333-333333333333", name: "Ana Griffith", balanceCents: 0, balanceState: "settled", todaySessionStatus: "canceled", lastAttendedOn: null, defaultRateCents: 3000, notes: null, version: 1 },
+    { id: "22222222-2222-4222-8222-222222222222", name: "Joel Best", balanceCents: -1000, balanceState: "credit", todaySessionStatus: "held", todaySessionId: "aaaaaaaa-2222-4222-8222-222222222222", todaySessionVersion: 1, lastAttendedOn: "31 Jul", defaultRateCents: 2500, notes: null, version: 1 },
+    { id: "33333333-3333-4333-8333-333333333333", name: "Ana Griffith", balanceCents: 0, balanceState: "settled", todaySessionStatus: "canceled", todaySessionId: "aaaaaaaa-3333-4333-8333-333333333333", todaySessionVersion: 1, lastAttendedOn: null, defaultRateCents: 3000, notes: null, version: 1 },
   ],
   activities: [],
   auditLog: [
@@ -326,12 +326,41 @@ describe("AdultAdminApp", () => {
     expect(push).toHaveBeenCalledWith("/?view=activity&tab=day&date=2026-07-30");
   });
 
-  it("opens a student profile directly from Today", () => {
+  it("opens a quick-action sheet from Today, with a path to the full profile", () => {
     render(<AdultAdminApp data={data} />);
     fireEvent.click(screen.getByRole("button", { name: "View Asha Clarke" }));
     expect(screen.getByRole("dialog", { name: "Asha Clarke" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark attended" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "No-show" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel class" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "View profile" }));
     expect(screen.getByText("Current balance")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Generate statement" })).toHaveAttribute("href", `/statements/${data.students[0]!.id}`);
+  });
+
+  it("marks a student attended from the Today quick-action sheet", async () => {
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "View Asha Clarke" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark attended" }));
+
+    await waitFor(() => expect(saveSession).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "aaaaaaaa-1111-4111-8111-111111111111",
+      studentId: data.students[0]!.id,
+      sessionDate: "2026-07-31",
+      status: "held",
+      expectedVersion: 3,
+    })));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("hides attendance actions for a student with no session scheduled today", () => {
+    render(<AdultAdminApp data={{ ...data, students: [{ ...data.students[0]!, todaySessionStatus: null, todaySessionId: null, todaySessionVersion: null }] }} />);
+    fireEvent.click(screen.getByRole("button", { name: "View Asha Clarke" }));
+    expect(screen.queryByRole("button", { name: "Mark attended" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log a payment" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View profile" })).toBeInTheDocument();
   });
 
   it("corrects a payment immutably from the daily ledger", async () => {

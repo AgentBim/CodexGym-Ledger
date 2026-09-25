@@ -60,6 +60,8 @@ export function toAdultAdminReadModel(dashboard: LedgerDashboard): AdultAdminRea
       balanceCents: student.balanceCents,
       balanceState: student.balanceState,
       todaySessionStatus: student.todaySession?.status ?? null,
+      todaySessionId: student.todaySession?.id ?? null,
+      todaySessionVersion: student.todaySession?.version ?? null,
       lastAttendedOn: student.lastHeldOn ? dateLabel(student.lastHeldOn, { day: "numeric", month: "short" }) : null,
       defaultRateCents: student.defaultRateCents,
       notes: student.notes,
