@@ -1,5 +1,7 @@
 # Security and production-readiness review
 
+> Status update — 2026-08-04: SEC-001, SEC-002, and SEC-003 are resolved in the current working tree and approved Supabase target. The app now authenticates, reads live owner-scoped data, uses audited RPC mutations, contains no production demo adapter, and the applied migrations passed Security Advisor plus rolled-back ownership/direct-write checks. SEC-004 remains partially open until the coach Auth account is created and public enrollment is disabled and verified. The findings below are retained as the original review record.
+
 ## Executive summary
 
 No database or deployment action was performed. The reviewed scaffold has sound foundational choices—server-side `getUser()`, publishable-key-only configuration, strict validation for implemented actions, owner-scoped RLS, integer money, immutable voiding, idempotency keys, and a nonce-based CSP after review fixes. It is **not ready for production or migration approval** because authentication/UI integration and several audited mutation contracts remain incomplete.
@@ -50,4 +52,3 @@ No database or deployment action was performed. The reviewed scaffold has sound 
 ## Verification limitations
 
 Static searches found no dangerous HTML injection, string-to-code execution, token storage, service-role key, untrusted navigation, service worker, or `postMessage` usage. `git diff --check` is clean. Local typecheck/lint/tests could not run because dependencies are not installed in this workspace; invoking the package runner attempted an interactive modules-directory installation, which was not approved or performed. CSP behavior also requires runtime browser verification after dependencies are available.
-

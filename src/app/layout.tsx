@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ChalkTab",
-  description: "ChalkTab: attendance, payments and class packages for adult gymnastics.",
+  description: "Attendance and payment tracking for adult gymnastics classes.",
   robots: { index: false, follow: false },
 };
 
@@ -11,7 +11,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#146b52",
+  themeColor: "#102a43",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -21,4 +21,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-
