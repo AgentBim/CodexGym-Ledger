@@ -153,7 +153,7 @@ export const EMPTY_ADULT_ADMIN_DATA: AdultAdminReadModel = {
   period: { label: "Current period", totalOwedCents: 0, totalCreditCents: 0, attendanceCount: 0, collectedCents: 0 },
 };
 
-type UndoState = { operationId: string; message: string };
+type UndoState = { operationId: string; message: string; idempotencyKey: string };
 
 const money = (cents: number) => new Intl.NumberFormat("en-BB", { style: "currency", currency: "BBD" }).format(Math.abs(cents) / 100).replace("BBD", "$");
 const balanceLabel = (student: StudentReadModel) => student.balanceState === "credit" ? `Credit ${money(student.balanceCents)}` : student.balanceState === "settled" ? "Settled" : `${student.balanceState === "overdue" ? "Overdue · " : ""}Owes ${money(student.balanceCents)}`;
@@ -195,7 +195,21 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const [sessionStudentId, setSessionStudentId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkReviewing, setBulkReviewing] = useState(false);
+  const [bulkIdempotencyKey, setBulkIdempotencyKey] = useState<string | null>(null);
   const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string | null>(null);
+  const [sessionIdempotencyKey, setSessionIdempotencyKey] = useState<string | null>(null);
+  const [entryIdempotencyKey, setEntryIdempotencyKey] = useState<string | null>(null);
+  const [studentIdempotencyKey, setStudentIdempotencyKey] = useState<string | null>(null);
+  const [restoreIdempotencyKey, setRestoreIdempotencyKey] = useState<string | null>(null);
+  const [archiveIdempotencyKey, setArchiveIdempotencyKey] = useState<string | null>(null);
+  const [templateIdempotencyKey, setTemplateIdempotencyKey] = useState<string | null>(null);
+  const [templateArchiveIdempotencyKey, setTemplateArchiveIdempotencyKey] = useState<string | null>(null);
+  const [reviewIdempotencyKey, setReviewIdempotencyKey] = useState(() => freshIdempotencyKey());
+  const [reviewDateForKey, setReviewDateForKey] = useState(data.review.date);
+  if (data.review.date !== reviewDateForKey) {
+    setReviewDateForKey(data.review.date);
+    setReviewIdempotencyKey(freshIdempotencyKey());
+  }
   const [quickActionStudentId, setQuickActionStudentId] = useState<string | null>(null);
   const [quickHeldIdempotencyKey, setQuickHeldIdempotencyKey] = useState<string | null>(null);
   const [quickNoShowIdempotencyKey, setQuickNoShowIdempotencyKey] = useState<string | null>(null);
@@ -217,11 +231,14 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   function openBulk() {
     setSelected(activeStudents.filter((student) => student.todaySessionStatus !== "canceled").map((student) => student.id));
     setBulkReviewing(false);
+    setBulkIdempotencyKey(freshIdempotencyKey());
     setModal("bulk");
   }
 
   function openStudent(student: StudentReadModel | null = null) {
     setEditingStudent(student);
+    setStudentIdempotencyKey(freshIdempotencyKey());
+    setRestoreIdempotencyKey(freshIdempotencyKey());
     setModal("student");
   }
 
@@ -233,6 +250,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   function openEntry(entry: StudentHistoryEntryReadModel) {
     setEditingEntry(entry);
     setFormError(null);
+    setEntryIdempotencyKey(freshIdempotencyKey());
     setModal("entry");
   }
 
@@ -253,6 +271,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
 
   function openSession(studentId?: string) {
     setSessionStudentId(studentId ?? activeStudents[0]?.id ?? null);
+    setSessionIdempotencyKey(freshIdempotencyKey());
     setModal("session");
   }
 
@@ -272,12 +291,13 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setNotice(null);
     setIsPending(true);
     try {
-      const result = await bulkMarkAttended({ idempotencyKey: freshIdempotencyKey(), sessionDate: data.todayDate, studentIds: selected });
+      const result = await bulkMarkAttended({ idempotencyKey: bulkIdempotencyKey ?? freshIdempotencyKey(), sessionDate: data.todayDate, studentIds: selected });
       const error = resultMessage(result);
       if (error) return setNotice(error);
       const id = operationId(result);
       setModal(null);
-      if (id) setUndo({ operationId: id, message: `${selected.length} students marked held` });
+      setBulkIdempotencyKey(null);
+      if (id) setUndo({ operationId: id, message: `${selected.length} students marked held`, idempotencyKey: freshIdempotencyKey() });
       router.refresh();
     } catch { setNotice("The attendance could not be saved. Please try again."); }
     finally { setIsPending(false); }
@@ -327,7 +347,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       const id = operationId(result);
       setModal(null);
       setPaymentIdempotencyKey(null);
-      if (id) setUndo({ operationId: id, message: `Payment of ${money(amountCents)} recorded` });
+      if (id) setUndo({ operationId: id, message: `Payment of ${money(amountCents)} recorded`, idempotencyKey: freshIdempotencyKey() });
       router.refresh();
     } catch { setNotice("The payment could not be saved. Your entered values are safe to retry."); }
     finally { setIsPending(false); }
@@ -341,7 +361,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setIsPending(true);
     try {
       const result = await saveSession({
-        idempotencyKey: freshIdempotencyKey(),
+        idempotencyKey: sessionIdempotencyKey ?? freshIdempotencyKey(),
         sessionId: null,
         studentId: String(form.get("student")),
         sessionDate: String(form.get("date")),
@@ -354,7 +374,8 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       if (error) return setNotice(error);
       const id = operationId(result);
       setModal(null);
-      if (id) setUndo({ operationId: id, message: `${statusLabel(status)} session saved` });
+      setSessionIdempotencyKey(null);
+      if (id) setUndo({ operationId: id, message: `${statusLabel(status)} session saved`, idempotencyKey: freshIdempotencyKey() });
       router.refresh();
     } catch { setNotice("The session could not be saved. Your entered values are safe to retry."); }
     finally { setIsPending(false); }
@@ -371,7 +392,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
         const replace = form.get("replacement") === "on";
         const amountCents = Math.round(Number(form.get("amount")) * 100);
         const result = await correctPayment({
-          idempotencyKey: freshIdempotencyKey(),
+          idempotencyKey: entryIdempotencyKey ?? freshIdempotencyKey(),
           paymentId: editingEntry.id,
           expectedVersion: editingEntry.version,
           voidReason: String(form.get("voidReason")),
@@ -383,13 +404,14 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       } else {
         const shouldVoid = form.get("void") === "on";
         const status = String(form.get("status")) as SessionStatus;
-        const result = await saveSession({ idempotencyKey: freshIdempotencyKey(), sessionId: editingEntry.id, studentId: editingEntry.studentId, sessionDate: String(form.get("date")), status, void: shouldVoid, voidReason: shouldVoid ? String(form.get("voidReason")) : null, expectedVersion: editingEntry.version });
+        const result = await saveSession({ idempotencyKey: entryIdempotencyKey ?? freshIdempotencyKey(), sessionId: editingEntry.id, studentId: editingEntry.studentId, sessionDate: String(form.get("date")), status, void: shouldVoid, voidReason: shouldVoid ? String(form.get("voidReason")) : null, expectedVersion: editingEntry.version });
         const error = resultMessage(result);
         if (error) return setFormError(error);
         setNotice(shouldVoid ? `${editingEntry.studentName ?? "Student"}'s session was voided.` : `${editingEntry.studentName ?? "Student"}'s session was updated.`);
       }
       setModal(null);
       setEditingEntry(null);
+      setEntryIdempotencyKey(null);
       router.refresh();
     } catch { setFormError("The entry could not be changed. Your entered values are safe to retry."); }
     finally { setIsPending(false); }
@@ -403,7 +425,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setIsPending(true);
     try {
       const result = await saveStudent({
-        idempotencyKey: freshIdempotencyKey(),
+        idempotencyKey: studentIdempotencyKey ?? freshIdempotencyKey(),
         studentId: editingStudent?.id,
         name: String(form.get("name")),
         defaultRateCents: rateCents,
@@ -415,6 +437,8 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       if (error) return setNotice(error);
       setModal(null);
       setEditingStudent(null);
+      setStudentIdempotencyKey(null);
+      setRestoreIdempotencyKey(null);
       setNotice(editingStudent ? "Student updated" : "Student added");
       router.refresh();
     } catch { setNotice("The student could not be saved. Your entered values are safe to retry."); }
@@ -427,7 +451,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setIsPending(true);
     try {
       const result = await saveStudent({
-        idempotencyKey: freshIdempotencyKey(),
+        idempotencyKey: archiveIdempotencyKey ?? freshIdempotencyKey(),
         studentId: editingStudent.id,
         name: editingStudent.name,
         defaultRateCents: editingStudent.defaultRateCents ?? 3000,
@@ -439,6 +463,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       if (error) return setNotice(error);
       setModal(null);
       setEditingStudent(null);
+      setArchiveIdempotencyKey(null);
       setNotice("Student archived. Attendance and payment history was preserved.");
       router.refresh();
     } catch { setNotice("The student could not be archived. Please refresh and try again."); }
@@ -451,7 +476,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setIsPending(true);
     try {
       const result = await saveStudent({
-        idempotencyKey: freshIdempotencyKey(),
+        idempotencyKey: restoreIdempotencyKey ?? freshIdempotencyKey(),
         studentId: editingStudent.id,
         name: editingStudent.name,
         defaultRateCents: editingStudent.defaultRateCents ?? 3000,
@@ -463,6 +488,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       if (error) return setNotice(error);
       setModal(null);
       setEditingStudent(null);
+      setRestoreIdempotencyKey(null);
       setNotice("Student restored to the active roster.");
       router.refresh();
     } catch { setNotice("The student could not be restored. Please refresh and try again."); }
@@ -476,7 +502,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setIsPending(true);
     try {
       const input = {
-        idempotencyKey: freshIdempotencyKey(),
+        idempotencyKey: templateIdempotencyKey ?? freshIdempotencyKey(),
         templateId: editingTemplate?.id ?? null,
         studentId: String(form.get("student")),
         weekday: Number(form.get("weekday")),
@@ -496,6 +522,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
       const generationError = resultMessage(generated);
       setModal(null);
       setEditingTemplate(null);
+      setTemplateIdempotencyKey(null);
       if (generationError) setNotice(`Recurring class saved, but sessions could not be generated: ${generationError}`);
       else setNotice(editingTemplate ? "Recurring class updated" : "Recurring class created and upcoming sessions scheduled");
       router.refresh();
@@ -509,12 +536,15 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     try {
       const paused = changes.paused ?? template.paused;
       const archived = changes.archived ?? false;
-      const result = await saveTemplate({ idempotencyKey: freshIdempotencyKey(), templateId: template.id, studentId: template.studentId, weekday: template.weekday, startsOn: template.startsOn, endsOn: template.endsOn, paused, archived, expectedVersion: template.version });
+      const key = (changes.archived ? templateArchiveIdempotencyKey : templateIdempotencyKey) ?? freshIdempotencyKey();
+      const result = await saveTemplate({ idempotencyKey: key, templateId: template.id, studentId: template.studentId, weekday: template.weekday, startsOn: template.startsOn, endsOn: template.endsOn, paused, archived, expectedVersion: template.version });
       const error = resultMessage(result);
       if (error) return setNotice(error);
       if (!paused && !archived) await materializeRecurringSessions({ idempotencyKey: freshIdempotencyKey() });
       setModal(null);
       setEditingTemplate(null);
+      setTemplateIdempotencyKey(null);
+      setTemplateArchiveIdempotencyKey(null);
       setNotice(archived ? "Recurring class archived. Existing sessions were preserved." : paused ? "Recurring class paused" : "Recurring class resumed and upcoming sessions scheduled");
       router.refresh();
     } catch { setNotice("The recurring class could not be updated. Refresh and try again."); }
@@ -525,9 +555,10 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setNotice(null);
     setIsPending(true);
     try {
-      const result = await markDailyReviewed({ idempotencyKey: freshIdempotencyKey(), reviewDate: data.review.date });
+      const result = await markDailyReviewed({ idempotencyKey: reviewIdempotencyKey ?? freshIdempotencyKey(), reviewDate: data.review.date });
       const error = resultMessage(result);
       if (error) return setNotice(error);
+      setReviewIdempotencyKey(freshIdempotencyKey());
       setNotice("Day marked reviewed");
       router.refresh();
     } catch { setNotice("The review could not be saved. Please try again."); }
@@ -539,7 +570,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     setNotice(null);
     setIsPending(true);
     try {
-      const result = await undoOperation({ idempotencyKey: freshIdempotencyKey(), operationId: undo.operationId });
+      const result = await undoOperation({ idempotencyKey: undo.idempotencyKey, operationId: undo.operationId });
       const error = resultMessage(result);
       if (error) return setNotice(error);
       setUndo(null);
@@ -559,20 +590,20 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
           {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
           {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/?${params.toString()}`)} onDateChange={(date) => router.push(`/?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => navigateView("today")} isPending={isPending} />}
-          {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setModal("template"); }} />}
+          {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} />}
         </main>
         <nav className="bottom-nav" aria-label="Primary navigation">{navItems.map((item) => <NavButton key={item.id} item={item} view={view} onNavigate={navigateView} />)}</nav>
       </div>
       {modal === "bulk" && <BulkDialog date={data.todayLabel} students={activeStudents} selected={selected} setSelected={setSelected} reviewing={bulkReviewing} setReviewing={setBulkReviewing} onClose={() => setModal(null)} onConfirm={confirmBulk} isPending={isPending} />}
       {modal === "payment" && <PaymentDialog date={data.todayDate} students={activeStudents} selectedStudentId={paymentStudentId} onClose={() => { setModal(null); setPaymentStudentId(null); setPaymentIdempotencyKey(null); }} onSubmit={submitPayment} isPending={isPending} />}
-      {modal === "session" && <SessionDialog date={data.todayDate} students={activeStudents} selectedStudentId={sessionStudentId} onClose={() => { setModal(null); setSessionStudentId(null); }} onSubmit={submitSession} isPending={isPending} />}
-      {modal === "entry" && editingEntry && <EntryDialog entry={editingEntry} student={data.students.find((student) => student.id === editingEntry.studentId)} error={formError} onClose={() => { setModal(null); setEditingEntry(null); setFormError(null); }} onSubmit={submitEntry} isPending={isPending} />}
+      {modal === "session" && <SessionDialog date={data.todayDate} students={activeStudents} selectedStudentId={sessionStudentId} onClose={() => { setModal(null); setSessionStudentId(null); setSessionIdempotencyKey(null); }} onSubmit={submitSession} isPending={isPending} />}
+      {modal === "entry" && editingEntry && <EntryDialog entry={editingEntry} student={data.students.find((student) => student.id === editingEntry.studentId)} error={formError} onClose={() => { setModal(null); setEditingEntry(null); setFormError(null); setEntryIdempotencyKey(null); }} onSubmit={submitEntry} isPending={isPending} />}
       {modal === "studentDetail" && editingStudent && <StudentDetailDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); }} onPay={() => openPayment(editingStudent.id)} onSession={() => openSession(editingStudent.id)} onEdit={() => setModal("student")} onEntry={openEntry} />}
       {modal === "quickAction" && quickActionStudent && <QuickActionSheet student={quickActionStudent} todayLabel={data.todayLabel} onClose={() => { setModal(null); setQuickActionStudentId(null); }} onMark={(status) => setTodayAttendance(quickActionStudent, status)} onPay={() => openPayment(quickActionStudent.id)} onViewProfile={() => viewStudent(quickActionStudent)} isPending={isPending} />}
-      {modal === "student" && <StudentDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); }} onSubmit={submitStudent} onArchive={editingStudent?.version && !editingStudent.archived ? () => setModal("archive") : undefined} onRestore={editingStudent?.version && editingStudent.archived ? restoreStudent : undefined} isPending={isPending} />}
-      {modal === "archive" && editingStudent && <ArchiveStudentDialog student={editingStudent} onClose={() => setModal("student")} onConfirm={archiveStudent} isPending={isPending} />}
-      {modal === "template" && <TemplateDialog template={editingTemplate} students={activeStudents} defaultDate={data.todayDate} onClose={() => { setModal(null); setEditingTemplate(null); }} onSubmit={submitTemplate} onToggle={editingTemplate ? () => setTemplateState(editingTemplate, { paused: !editingTemplate.paused }) : undefined} onArchive={editingTemplate ? () => setModal("templateArchive") : undefined} isPending={isPending} />}
-      {modal === "templateArchive" && editingTemplate && <ArchiveTemplateDialog template={editingTemplate} onClose={() => setModal("template")} onConfirm={() => setTemplateState(editingTemplate, { archived: true })} isPending={isPending} />}
+      {modal === "student" && <StudentDialog student={editingStudent} onClose={() => { setModal(null); setEditingStudent(null); setStudentIdempotencyKey(null); setRestoreIdempotencyKey(null); }} onSubmit={submitStudent} onArchive={editingStudent?.version && !editingStudent.archived ? () => { setArchiveIdempotencyKey(freshIdempotencyKey()); setModal("archive"); } : undefined} onRestore={editingStudent?.version && editingStudent.archived ? restoreStudent : undefined} isPending={isPending} />}
+      {modal === "archive" && editingStudent && <ArchiveStudentDialog student={editingStudent} onClose={() => { setModal("student"); setArchiveIdempotencyKey(null); }} onConfirm={archiveStudent} isPending={isPending} />}
+      {modal === "template" && <TemplateDialog template={editingTemplate} students={activeStudents} defaultDate={data.todayDate} onClose={() => { setModal(null); setEditingTemplate(null); setTemplateIdempotencyKey(null); }} onSubmit={submitTemplate} onToggle={editingTemplate ? () => setTemplateState(editingTemplate, { paused: !editingTemplate.paused }) : undefined} onArchive={editingTemplate ? () => { setTemplateArchiveIdempotencyKey(freshIdempotencyKey()); setModal("templateArchive"); } : undefined} isPending={isPending} />}
+      {modal === "templateArchive" && editingTemplate && <ArchiveTemplateDialog template={editingTemplate} onClose={() => { setModal("template"); setTemplateArchiveIdempotencyKey(null); }} onConfirm={() => setTemplateState(editingTemplate, { archived: true })} isPending={isPending} />}
       {undo && <div className="undo-toast" role="status"><span>{undo.message}<small>Undo available for 10 minutes</small></span><button disabled={isPending} onClick={undoLast}>Undo</button><button aria-label="Dismiss notification" onClick={() => setUndo(null)}>×</button></div>}
     </div>
   );

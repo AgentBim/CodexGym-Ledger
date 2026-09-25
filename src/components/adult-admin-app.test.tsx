@@ -118,6 +118,59 @@ describe("AdultAdminApp", () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
+  it("reuses the same idempotency key when retrying bulk attendance after a failure", async () => {
+    vi.mocked(bulkMarkAttended)
+      .mockResolvedValueOnce({ ok: false, code: "DATABASE", message: "Network hiccup" })
+      .mockResolvedValueOnce({ ok: true, data: { operationId: "44444444-4444-4444-8444-444444444444" } });
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: /mark attendance/i }));
+    fireEvent.click(screen.getByRole("button", { name: /review attendance \(2\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 attended/i }));
+    await waitFor(() => expect(bulkMarkAttended).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Network hiccup")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 attended/i }));
+    await waitFor(() => expect(bulkMarkAttended).toHaveBeenCalledTimes(2));
+
+    const calls = vi.mocked(bulkMarkAttended).mock.calls;
+    expect((calls[0]![0] as { idempotencyKey: string }).idempotencyKey).toBe((calls[1]![0] as { idempotencyKey: string }).idempotencyKey);
+  });
+
+  it("issues a new idempotency key each time bulk attendance is opened", async () => {
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: /mark attendance/i }));
+    fireEvent.click(screen.getByRole("button", { name: /review attendance \(2\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 attended/i }));
+    await waitFor(() => expect(bulkMarkAttended).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /mark attendance/i }));
+    fireEvent.click(screen.getByRole("button", { name: /review attendance \(2\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 attended/i }));
+    await waitFor(() => expect(bulkMarkAttended).toHaveBeenCalledTimes(2));
+
+    const calls = vi.mocked(bulkMarkAttended).mock.calls;
+    expect((calls[0]![0] as { idempotencyKey: string }).idempotencyKey).not.toBe((calls[1]![0] as { idempotencyKey: string }).idempotencyKey);
+  });
+
+  it("reuses the same idempotency key when retrying a student save after a failure", async () => {
+    vi.mocked(saveStudent)
+      .mockResolvedValueOnce({ ok: false, code: "DATABASE", message: "Network hiccup" })
+      .mockResolvedValueOnce({ ok: true, data: { operationId: "66666666-6666-4666-8666-666666666666" } });
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add student" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Kai Jordan" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Add student" }).at(-1)!);
+    await waitFor(() => expect(saveStudent).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Network hiccup")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Add student" }).at(-1)!);
+    await waitFor(() => expect(saveStudent).toHaveBeenCalledTimes(2));
+
+    const calls = vi.mocked(saveStudent).mock.calls;
+    expect((calls[0]![0] as { idempotencyKey: string }).idempotencyKey).toBe((calls[1]![0] as { idempotencyKey: string }).idempotencyKey);
+  });
+
   it("adds a student with a BBD default rate and notes", async () => {
     render(<AdultAdminApp data={data} />);
     fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
