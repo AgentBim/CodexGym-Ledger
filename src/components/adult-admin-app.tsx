@@ -189,7 +189,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const [editingTemplate, setEditingTemplate] = useState<TemplateReadModel | null>(null);
   const [editingEntry, setEditingEntry] = useState<StudentHistoryEntryReadModel | null>(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | BalanceState>("all");
+  const [filter, setFilter] = useState<BalanceState[]>([]);
   const [rosterStatus, setRosterStatus] = useState<"active" | "archived">("active");
   const [paymentStudentId, setPaymentStudentId] = useState<string | null>(null);
   const [sessionStudentId, setSessionStudentId] = useState<string | null>(null);
@@ -219,7 +219,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const activeStudents = useMemo(() => data.students.filter((student) => !student.archived), [data.students]);
-  const filtered = useMemo(() => data.students.filter((student) => Boolean(student.archived) === (rosterStatus === "archived") && student.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || student.balanceState === filter)), [data.students, filter, query, rosterStatus]);
+  const filtered = useMemo(() => data.students.filter((student) => Boolean(student.archived) === (rosterStatus === "archived") && student.name.toLowerCase().includes(query.toLowerCase()) && (filter.length === 0 || filter.includes(student.balanceState))), [data.students, filter, query, rosterStatus]);
   const quickActionStudent = data.students.find((student) => student.id === quickActionStudentId) ?? null;
 
   useEffect(() => {
@@ -277,7 +277,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
 
   function showOverdueStudents() {
     setRosterStatus("active");
-    setFilter("overdue");
+    setFilter(["overdue"]);
     setQuery("");
     navigateView("students");
   }
@@ -649,9 +649,30 @@ function SetupChecklist({ setup, onAddStudent, onTemplates, onAttendance, onPaym
 
 function EmptyLedger({ onAdd }: { onAdd: () => void }) { return <div className="empty"><b>Your ledger is ready</b><p>Add your first student to start tracking attendance and payments. No demo records have been added.</p><button className="primary compact" onClick={onAdd}>Add first student</button></div>; }
 
-function Students({ students, activeCount, query, setQuery, filter, setFilter, rosterStatus, setRosterStatus, onPay, onAdd, onEdit, onView }: { students: StudentReadModel[]; activeCount: number; query: string; setQuery: (value: string) => void; filter: "all" | BalanceState; setFilter: (value: "all" | BalanceState) => void; rosterStatus: "active" | "archived"; setRosterStatus: (value: "active" | "archived") => void; onPay: (studentId: string) => void; onAdd: () => void; onEdit: (student: StudentReadModel) => void; onView: (student: StudentReadModel) => void }) {
+const balanceFilterOptions: { value: BalanceState; label: string }[] = [
+  { value: "overdue", label: "Overdue" },
+  { value: "owed", label: "Owes" },
+  { value: "settled", label: "Settled" },
+  { value: "credit", label: "Credit" },
+];
+
+function Students({ students, activeCount, query, setQuery, filter, setFilter, rosterStatus, setRosterStatus, onPay, onAdd, onEdit, onView }: { students: StudentReadModel[]; activeCount: number; query: string; setQuery: (value: string) => void; filter: BalanceState[]; setFilter: (value: BalanceState[]) => void; rosterStatus: "active" | "archived"; setRosterStatus: (value: "active" | "archived") => void; onPay: (studentId: string) => void; onAdd: () => void; onEdit: (student: StudentReadModel) => void; onView: (student: StudentReadModel) => void }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const activeRosterEmpty = rosterStatus === "active" && activeCount === 0;
-  return <><PageHeading eyebrow="Roster" title="Students"><button className="primary compact" onClick={onAdd}>+ Add student</button></PageHeading><div className="roster-tabs" role="group" aria-label="Roster status"><button className={rosterStatus === "active" ? "active" : ""} aria-pressed={rosterStatus === "active"} onClick={() => setRosterStatus("active")}>Active</button><button className={rosterStatus === "archived" ? "active" : ""} aria-pressed={rosterStatus === "archived"} onClick={() => setRosterStatus("archived")}>Archived</button></div><div className="search-row"><label className="search"><span>⌕</span><span className="sr-only">Search students</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name" /></label><select aria-label="Filter by balance" value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">All balances</option><option value="overdue">Overdue</option><option value="owed">Owes</option><option value="settled">Settled</option><option value="credit">Credit</option></select></div><p className="result-count">{students.length} {rosterStatus} students</p><div className="student-grid">{students.map((student) => <article className="profile-card" key={student.id}><div className="avatar">{student.name[0]}</div><div><h2>{student.name}</h2><Balance student={student} /><p>{student.archived ? "Archived · history preserved" : student.lastAttendedOn ? `Last attended ${student.lastAttendedOn}` : "No attendance yet"}</p></div><div className="card-actions"><button className="secondary" onClick={() => onView(student)}>View</button><details className="overflow-menu"><summary aria-label={`More actions for ${student.name}`}>•••</summary><div>{!student.archived && <button onClick={() => onPay(student.id)}>Record payment</button>}<button onClick={() => onEdit(student)}>{student.archived ? "Restore student" : "Manage student"}</button></div></details></div></article>)}</div>{students.length === 0 && <div className="empty"><b>{activeRosterEmpty ? "No active students yet" : rosterStatus === "archived" ? "No archived students" : "No matching students"}</b><p>{activeRosterEmpty ? "Add your first student to begin. The app never inserts demo students automatically." : rosterStatus === "archived" ? "Archived students will appear here with their history and balances preserved." : "Try clearing your search or balance filter."}</p>{activeRosterEmpty && <button className="primary compact" onClick={onAdd}>Add first student</button>}</div>}</>;
+  const hasFilters = query.length > 0 || filter.length > 0;
+  function toggleFilter(value: BalanceState) {
+    setFilter(filter.includes(value) ? filter.filter((item) => item !== value) : [...filter, value]);
+  }
+  function clearFilters() { setQuery(""); setFilter([]); }
+  return <><PageHeading eyebrow="Roster" title="Students"><button className="primary compact" onClick={onAdd}>+ Add student</button></PageHeading><div className="roster-tabs" role="group" aria-label="Roster status"><button className={rosterStatus === "active" ? "active" : ""} aria-pressed={rosterStatus === "active"} onClick={() => setRosterStatus("active")}>Active</button><button className={rosterStatus === "archived" ? "active" : ""} aria-pressed={rosterStatus === "archived"} onClick={() => setRosterStatus("archived")}>Archived</button></div><div className="search-row"><label className="search"><span>⌕</span><span className="sr-only">Search students</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name" /></label><button type="button" className="secondary compact" onClick={() => setFiltersOpen(true)}>Filters{filter.length > 0 ? ` (${filter.length})` : ""}</button></div><p className="result-count">{students.length} {rosterStatus} students</p><div className="student-grid">{students.map((student) => <article className="profile-card" key={student.id}><div className="avatar">{student.name[0]}</div><div><h2>{student.name}</h2><Balance student={student} /><p>{student.archived ? "Archived · history preserved" : student.lastAttendedOn ? `Last attended ${student.lastAttendedOn}` : "No attendance yet"}</p></div><div className="card-actions"><button className="secondary" onClick={() => onView(student)}>View</button><details className="overflow-menu"><summary aria-label={`More actions for ${student.name}`}>•••</summary><div>{!student.archived && <button onClick={() => onPay(student.id)}>Record payment</button>}<button onClick={() => onEdit(student)}>{student.archived ? "Restore student" : "Manage student"}</button></div></details></div></article>)}</div>{students.length === 0 && <div className="empty"><b>{activeRosterEmpty ? "No active students yet" : rosterStatus === "archived" ? "No archived students" : "No matching students"}</b><p>{activeRosterEmpty ? "Add your first student to begin. The app never inserts demo students automatically." : rosterStatus === "archived" ? "Archived students will appear here with their history and balances preserved." : "Try clearing your search or balance filter."}</p>{activeRosterEmpty && <button className="primary compact" onClick={onAdd}>Add first student</button>}{!activeRosterEmpty && rosterStatus === "active" && hasFilters && <button className="secondary compact" onClick={clearFilters}>Clear filters</button>}</div>}
+    {filtersOpen && <DialogShell title="Filters" description="Narrow the roster by balance status." onClose={() => setFiltersOpen(false)}>
+      <div className="filter-chip-group">
+        <p className="filter-chip-label">Balance status</p>
+        <div className="filter-chips">{balanceFilterOptions.map((option) => <button key={option.value} type="button" className={`filter-chip ${filter.includes(option.value) ? "active" : ""}`} aria-pressed={filter.includes(option.value)} onClick={() => toggleFilter(option.value)}>{option.label}</button>)}</div>
+      </div>
+      <div className="sheet-actions"><button type="button" className="secondary" onClick={() => setFilter([])}>Clear all</button><button type="button" className="primary" onClick={() => setFiltersOpen(false)}>Show {students.length} results</button></div>
+    </DialogShell>}
+  </>;
 }
 
 function friendlyAuditLabel(value: string) {

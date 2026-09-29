@@ -292,6 +292,26 @@ describe("AdultAdminApp", () => {
     })));
   });
 
+  it("filters the roster with multi-select balance chips", () => {
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
+    expect(screen.getByText("3 active students")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Overdue" }));
+    expect(screen.getByRole("button", { name: /show 1 results/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Credit" }));
+    expect(screen.getByRole("button", { name: /show 2 results/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /show 2 results/i }));
+
+    expect(screen.getByText("2 active students")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filters (2)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(screen.getByText("3 active students")).toBeInTheDocument();
+  });
+
   it("shows archived students separately and restores them without deleting history", async () => {
     const archived = { ...data.students[2]!, archived: true, version: 4 };
     render(<AdultAdminApp data={{ ...data, students: [...data.students.slice(0, 2), archived] }} />);
