@@ -181,6 +181,24 @@ function shiftDate(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function useIsOnline() {
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  useEffect(() => {
+    function update() { setOnline(navigator.onLine); }
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
+  }, []);
+  return online;
+}
+
+function formatElapsed(ms: number) {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
 export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "today", initialActivityTab = "timeline", initialTimelineFilters = {} }: { data?: AdultAdminReadModel; initialView?: View; initialActivityTab?: "timeline" | "day" | "audit"; initialTimelineFilters?: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string } }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
@@ -221,6 +239,20 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const activeStudents = useMemo(() => data.students.filter((student) => !student.archived), [data.students]);
   const filtered = useMemo(() => data.students.filter((student) => Boolean(student.archived) === (rosterStatus === "archived") && student.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || student.balanceState === filter)), [data.students, filter, query, rosterStatus]);
   const quickActionStudent = data.students.find((student) => student.id === quickActionStudentId) ?? null;
+  const online = useIsOnline();
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  const isFirstDataRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstDataRender.current) { isFirstDataRender.current = false; return; }
+    setLastSyncedAt(Date.now());
+  }, [data]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!undo) return;
@@ -584,10 +616,11 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     <div className="app-frame" aria-busy={isPending}>
       <aside className="side-nav" aria-label="Primary navigation"><Brand />{navItems.map((item) => <NavButton key={item.id} item={item} view={view} onNavigate={navigateView} />)}</aside>
       <div className="app-content">
-        <header className="topbar"><Brand /><span className="save-state"><i /> {isPending ? "Saving…" : "All changes saved"}</span></header>
+        <header className="topbar"><Brand /><span className={`save-state ${!online ? "offline" : ""}`}><i /> {!online ? "Offline — changes will sync later" : isPending ? "Saving…" : `All changes saved · ${formatElapsed(now - lastSyncedAt)}`}</span></header>
+        {!online && <div className="offline-banner" role="status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 8.5c5-4 13-4 18 0M6.2 12c3.6-2.7 8-2.7 11.6 0M9.5 15.5c1.8-1.3 3.2-1.3 5 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="19" r="1.1" fill="currentColor" /></svg><span>You&rsquo;re offline — entries can&rsquo;t be saved until your connection comes back.</span></div>}
         <main id="main-content" className="main-content">
           {notice && <div className="review-state app-notice" role="status"><span aria-hidden="true">!</span><div><b>{notice}</b></div><button className="text-button" onClick={() => setNotice(null)}>Dismiss</button></div>}
-          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
+          {view === "today" && <Today data={{ ...data, students: activeStudents }} online={online} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
           {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/?${params.toString()}`)} onDateChange={(date) => router.push(`/?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => navigateView("today")} isPending={isPending} />}
           {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} />}
@@ -616,7 +649,7 @@ function PageHeading({ eyebrow, title, children }: { eyebrow: string; title: str
 function Balance({ student }: { student: StudentReadModel }) { return <span className={`balance ${student.balanceState}`}><span aria-hidden="true">{student.balanceState === "overdue" ? "▲" : student.balanceState === "credit" ? "↓" : student.balanceState === "settled" ? "✓" : "○"}</span>{balanceLabel(student)}</span>; }
 function Status({ value }: { value: SessionStatus | null }) { return <span className={`status ${(value ?? "unscheduled").replace("_", "")}`}>{statusLabel(value)}</span>; }
 
-function Today({ data, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue, onTemplates, onActivity, onInactive }: { data: AdultAdminReadModel; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void; onTemplates: () => void; onActivity: (type: string) => void; onInactive: () => void }) {
+function Today({ data, online, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue, onTemplates, onActivity, onInactive }: { data: AdultAdminReadModel; online: boolean; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void; onTemplates: () => void; onActivity: (type: string) => void; onInactive: () => void }) {
   const overdueCount = data.students.filter((student) => student.balanceState === "overdue").length;
   const scheduledCount = data.students.filter((student) => student.todaySessionStatus === "scheduled").length;
   const heldCount = data.students.filter((student) => student.todaySessionStatus === "held").length;
@@ -628,7 +661,7 @@ function Today({ data, onBulk, onPay, onSession, onView, onAddStudent, onShowOve
       {data.students.length ? <div className="student-list">{data.students.map((student) => <article className="student-row" key={student.id}><button className="student-open" onClick={() => onView(student)} aria-label={`View ${student.name}`}><span className="avatar" aria-hidden="true">{student.name.split(" ").map((part) => part[0]).join("")}</span><span className="student-copy"><strong>{student.name}</strong><Balance student={student} /></span></button><button className="quick-pay" onClick={() => onPay(student.id)} aria-label={`Record payment for ${student.name}`}>Pay</button><Status value={student.todaySessionStatus} /></article>)}</div> : <EmptyLedger onAdd={onAddStudent} />}
     </section>
     <section className="section recent"><div className="section-title"><h2>Recent activity</h2></div>{data.activities.length ? data.activities.slice(0, 3).map((activity) => <div className="activity-row" key={activity.id}><span className="activity-icon">✓</span><span>{activity.label}<small>{activity.occurredAtLabel}</small></span></div>) : <div className="empty"><b>No activity yet</b><p>Attendance and payments will appear here after you log them.</p></div>}</section>
-    <div className="sticky-action"><button className="primary" disabled={!data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> Mark attendance</button></div></>;
+    <div className="sticky-action">{!online && <p className="offline-hint">Reconnect to mark attendance</p>}<button className="primary" disabled={!online || !data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> {online ? "Mark attendance" : "Mark attendance — offline"}</button></div></>;
 }
 
 const SETUP_DISMISSAL_KEY = "chalktab:setup:v1:dismissed";
