@@ -32,6 +32,7 @@ function validationFailure(error: { flatten(): { fieldErrors: Record<string, str
 
 function databaseFailure(error: { message: string; code?: string }): MutationResult {
   const { message } = error;
+  if (message.includes("package_undo_requires_correction")) return { ok: false, code: "INVALID", message: "Use the session correction form for package-covered or late attendance. This preserves the package and audit history." };
   if (message.includes("idempotency_conflict") || message.includes("stale_operation")) return { ok: false, code: "CONFLICT", message: "This request conflicts with a newer or different change." };
   if (message.includes("undo_expired")) return { ok: false, code: "EXPIRED", message: "The undo window has expired." };
   if (message.includes("not_found")) return { ok: false, code: "NOT_FOUND", message: "The requested record was not found." };

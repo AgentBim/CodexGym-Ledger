@@ -392,6 +392,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ui_snapshot: { Args: Record<string, never>; Returns: Json }
+      ui_command: { Args: { p_key: string; p_hash: string; p_command: Json }; Returns: Json }
       preview_template_schedule: {
         Args: {
           p_ends_on: string | null

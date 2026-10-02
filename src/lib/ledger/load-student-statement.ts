@@ -1,4 +1,6 @@
 import "server-only";
+import { loadUiSnapshot } from "./load-ui";
+import { readAll } from "./read-all";
 
 import { buildAccountStatementLedger, type AccountStatementEntry } from "@/lib/domain/statement";
 import { requireUser } from "@/lib/supabase/server";
@@ -70,8 +72,8 @@ export async function loadStudentStatement({
 
   const [studentResult, sessionsResult, paymentsResult] = await Promise.all([
     supabase.from("students").select("id,name,archived_at").eq("owner_id", user.id).eq("id", studentId).maybeSingle(),
-    supabase.from("sessions").select("id,session_date,status,charge_rate_cents,voided_at,created_at").eq("owner_id", user.id).eq("student_id", studentId).lte("session_date", endDate).order("session_date"),
-    supabase.from("payments").select("id,payment_date,amount_cents,method,voided_at,created_at").eq("owner_id", user.id).eq("student_id", studentId).lte("payment_date", endDate).order("payment_date"),
+    readAll((from,to) => supabase.from("sessions").select("id,session_date,status,charge_rate_cents,voided_at,created_at").eq("owner_id", user.id).eq("student_id", studentId).lte("session_date", endDate).order("session_date").order("id").range(from,to)),
+    readAll((from,to) => supabase.from("payments").select("id,payment_date,amount_cents,method,voided_at,created_at").eq("owner_id", user.id).eq("student_id", studentId).lte("payment_date", endDate).order("payment_date").order("id").range(from,to)),
   ]);
 
   if (studentResult.error || sessionsResult.error || paymentsResult.error) throw new StatementReadError();
@@ -80,13 +82,15 @@ export async function loadStudentStatement({
   const student = studentResult.data as StatementStudentRow;
   const sessions = (sessionsResult.data ?? []) as StatementSessionRow[];
   const payments = (paymentsResult.data ?? []) as StatementPaymentRow[];
+  const adjustments = (await loadUiSnapshot()).adjustments.filter(a => a.student_id === studentId && a.entry_date <= endDate);
   const earliestDate = [
+    ...adjustments.map(a => a.entry_date),
     ...sessions.filter((entry) => !entry.voided_at && entry.status === "held" && entry.charge_rate_cents !== null).map((entry) => entry.session_date),
     ...payments.filter((entry) => !entry.voided_at).map((entry) => entry.payment_date),
   ].sort()[0] ?? endDate;
   const requestedStart = validDate(from);
   const startDate = requestedStart && requestedStart <= endDate ? requestedStart : earliestDate;
-  const ledger = buildAccountStatementLedger({ from: startDate, to: endDate, sessions, payments });
+  const ledger = buildAccountStatementLedger({ from: startDate, to: endDate, sessions, payments, adjustments });
 
   return {
     student: { id: student.id, name: student.name, archived: Boolean(student.archived_at) },

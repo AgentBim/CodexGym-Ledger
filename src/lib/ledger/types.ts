@@ -66,7 +66,7 @@ export type LedgerTemplate = {
 export type LedgerAuditEvent = {
   id: string;
   operationId: string;
-  entityType: "student" | "session" | "payment" | "template" | "daily_review";
+  entityType: "student" | "session" | "payment" | "template" | "daily_review" | "package" | "adjustment" | "class_settings";
   entityId: string;
   action: string;
   beforeState: Json | null;

@@ -323,7 +323,7 @@ describe("AdultAdminApp", () => {
     expect(screen.getByText("BBD $25.00 charge")).toBeInTheDocument();
     expect(screen.getByText("BBD $30.00 payment")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous day" }));
-    expect(push).toHaveBeenCalledWith("/?view=activity&tab=day&date=2026-07-30");
+    expect(push).toHaveBeenCalledWith("/ledger-tools?view=activity&tab=day&date=2026-07-30");
   });
 
   it("opens a quick-action sheet from Today, with a path to the full profile", () => {
@@ -397,7 +397,7 @@ describe("AdultAdminApp", () => {
     render(<AdultAdminApp data={data} initialView="activity" initialActivityTab="timeline" />);
     expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
     fireEvent.change(screen.getByLabelText("Entry type"), { target: { value: "payment" } });
-    expect(push).toHaveBeenCalledWith("/?view=activity&tab=timeline&type=payment");
+    expect(push).toHaveBeenCalledWith("/ledger-tools?view=activity&tab=timeline&type=payment");
     fireEvent.click(screen.getByRole("button", { name: /Asha Clarke.*BBD \$30\.00 payment/i }));
     expect(screen.getByRole("dialog", { name: "Correct payment" })).toBeInTheDocument();
   });
@@ -406,7 +406,7 @@ describe("AdultAdminApp", () => {
     render(<AdultAdminApp data={data} initialView="activity" initialActivityTab="audit" />);
     expect(screen.getByRole("tab", { name: "Audit log" })).toHaveAttribute("aria-selected", "true");
     fireEvent.change(screen.getByLabelText("Record type"), { target: { value: "payment" } });
-    expect(push).toHaveBeenCalledWith("/?view=activity&tab=audit&entity=payment");
+    expect(push).toHaveBeenCalledWith("/ledger-tools?view=activity&tab=audit&entity=payment");
     fireEvent.click(screen.getByText("Payment · Corrected"));
     expect(screen.getByText("operation-123")).toBeInTheDocument();
     expect(screen.getByText(/"amount_cents": 3000/)).toBeInTheDocument();
@@ -425,7 +425,7 @@ describe("AdultAdminApp", () => {
     const { rerender } = render(<AdultAdminApp data={data} />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
-    expect(push).toHaveBeenCalledWith("/?view=students");
+    expect(push).toHaveBeenCalledWith("/ledger-tools?view=students");
     expect(screen.getByRole("heading", { name: "Students" })).toBeInTheDocument();
 
     rerender(<AdultAdminApp key="more" data={data} initialView="more" />);
@@ -433,6 +433,6 @@ describe("AdultAdminApp", () => {
     expect(screen.getAllByRole("button", { name: "More" })[0]).toHaveAttribute("aria-current", "page");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Today" })[0]!);
-    expect(push).toHaveBeenCalledWith("/");
+    expect(push).toHaveBeenCalledWith("/ledger-tools");
   });
 });

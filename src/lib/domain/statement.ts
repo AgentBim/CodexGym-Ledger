@@ -1,4 +1,5 @@
 import type { PaymentMethod, SessionStatus } from "@/lib/supabase/database.types";
+import type { Adjustment } from "@/lib/ledger/ui-types";
 
 type StatementSession = {
   id: string;
@@ -20,7 +21,7 @@ type StatementPayment = {
 
 export type AccountStatementEntry = {
   id: string;
-  kind: "session" | "payment";
+  kind: "session" | "payment" | "adjustment";
   date: string;
   description: string;
   debitCents: number;
@@ -47,11 +48,13 @@ export function buildAccountStatementLedger({
   to,
   sessions,
   payments,
+  adjustments = [],
 }: {
   from: string;
   to: string;
   sessions: readonly StatementSession[];
   payments: readonly StatementPayment[];
+  adjustments?: readonly Adjustment[];
 }): AccountStatementLedger {
   if (from > to) throw new Error("Statement start date must not be after end date");
 
@@ -60,9 +63,11 @@ export function buildAccountStatementLedger({
   const activePayments = payments.filter((entry) => !entry.voided_at && entry.payment_date <= to);
   const openingBalanceCents =
     activeCharges.reduce((sum, entry) => sum + (entry.session_date < from ? entry.charge_rate_cents ?? 0 : 0), 0) -
-    activePayments.reduce((sum, entry) => sum + (entry.payment_date < from ? entry.amount_cents : 0), 0);
+    activePayments.reduce((sum, entry) => sum + (entry.payment_date < from ? entry.amount_cents : 0), 0) +
+    adjustments.filter(e => e.entry_date < from).reduce((sum,e) => sum+e.amount_cents,0);
 
   const periodEntries = [
+    ...adjustments.filter(e => e.entry_date >= from && e.entry_date <= to).map(e => ({ id: e.id, kind: "adjustment" as const, date: e.entry_date, createdAt: e.created_at, description: e.reason, debitCents: Math.max(0,e.amount_cents), creditCents: Math.max(0,-e.amount_cents) })),
     ...activeCharges.filter((entry) => entry.session_date >= from).map((entry) => ({
       id: entry.id,
       kind: "session" as const,

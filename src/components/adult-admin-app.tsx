@@ -284,7 +284,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
 
   function navigateView(nextView: View) {
     setView(nextView);
-    router.push(nextView === "today" ? "/" : `/?view=${nextView}`);
+    router.push(nextView === "today" ? "/ledger-tools" : `/ledger-tools?view=${nextView}`);
   }
 
   async function confirmBulk() {
@@ -587,9 +587,9 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
         <header className="topbar"><Brand /><span className="save-state"><i /> {isPending ? "Saving…" : "All changes saved"}</span></header>
         <main id="main-content" className="main-content">
           {notice && <div className="review-state app-notice" role="status"><span aria-hidden="true">!</span><div><b>{notice}</b></div><button className="text-button" onClick={() => setNotice(null)}>Dismiss</button></div>}
-          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
+          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/ledger-tools?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
-          {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/?${params.toString()}`)} onDateChange={(date) => router.push(`/?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => navigateView("today")} isPending={isPending} />}
+          {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/ledger-tools?${params.toString()}`)} onDateChange={(date) => router.push(`/ledger-tools?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => navigateView("today")} isPending={isPending} />}
           {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} />}
         </main>
         <nav className="bottom-nav" aria-label="Primary navigation">{navItems.map((item) => <NavButton key={item.id} item={item} view={view} onNavigate={navigateView} />)}</nav>
