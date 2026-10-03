@@ -1,0 +1,70 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readdir, readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { randomUUID, createHash } from 'node:crypto';
+
+// Local, disposable PostgreSQL engine. No connection string or hosted data.
+const db = new PGlite();
+await db.exec(`create role anon; create role authenticated; create schema auth;
+  create table auth.users(id uuid primary key);
+  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+  grant usage on schema auth to authenticated; grant execute on function auth.uid() to authenticated;
+  create function public.rls_auto_enable() returns event_trigger language plpgsql as $$ begin end $$;`);
+for (const file of (await readdir('supabase/migrations')).filter(f=>/^\d+.*\.sql$/.test(f)).sort()) {
+  try { await db.exec(await readFile(`supabase/migrations/${file}`,'utf8')); }
+  catch (e) { console.error('Migration failed:',file); throw e; }
+}
+const owner=randomUUID(),other=randomUUID();
+await db.query('insert into auth.users values ($1),($2)',[owner,other]);
+await db.query("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+await db.exec('set role authenticated');
+const hash=o=>createHash('sha256').update(JSON.stringify(o)).digest('hex');
+const query=async(sql,args=[])=>(await db.query(sql,args)).rows;
+const rpc=async(command,key=randomUUID())=>(await query('select public.ui_command($1,$2,$3) as result',[key,hash(command),JSON.stringify(command)]))[0].result;
+const snapshot=async()=>(await query('select public.ui_snapshot() as result'))[0].result;
+const student=async(name)=>(await query('select public.save_student($1,$2,null,$3,3000,null,false,null) as result',[randomUUID(),hash(name),name]))[0].result.student.id;
+const sid=await student('Synthetic student');
+const today='2026-10-02';
+await rpc({type:'createPackage',definition:{name:'Two classes',description:'',kind:'class_pack',classCount:2,priceCents:5000,validityWeeks:4,archived:false}});
+const pkg=(await snapshot()).packages[0];
+const assignment={type:'assignPackage',studentId:sid,packageId:pkg.id,startDate:today,endDate:'2026-10-30'};
+const key=randomUUID();
+await rpc(assignment,key); await rpc(assignment,key);
+assert.equal((await snapshot()).studentPackages.length,1,'idempotent assignment');
+assert.equal((await snapshot()).adjustments.length,1,'one package charge');
+await assert.rejects(()=>rpc({...assignment,endDate:'2026-11-01'},key),/idempotency_conflict/);
+const attend=async(date,mark='present',session=null)=>rpc({type:'attendance',date,entries:[{studentId:sid,mark,sessionId:session?.id??null,expectedVersion:session?.version??null}]});
+await attend(today,'late');
+let s=(await query('select * from public.sessions where student_id=$1',[sid]))[0];
+assert.equal(s.charge_rate_cents,0,'covered class has no extra charge');
+assert.equal(s.attendance_mark,'late','late survives database reload');
+assert.equal((await snapshot()).studentPackages[0].used,1);
+await assert.rejects(()=>attend(today),/stale_operation/);
+assert.equal((await snapshot()).studentPackages[0].used,1,'duplicate batch does not consume twice');
+await attend('2026-10-03'); await attend('2026-10-04');
+assert.equal((await query("select charge_rate_cents from public.sessions where session_date='2026-10-04'"))[0].charge_rate_cents,3000,'exhausted package falls back to rate');
+const correction=(await query('select public.save_session($1,$2,$3,$4,$5,$6,false,null,$7) as result',[randomUUID(),hash('correction'),s.id,sid,today,'no_show',s.version]))[0].result;
+assert.equal((await snapshot()).studentPackages[0].used,1,'legacy correction releases class');
+await assert.rejects(()=>query('select public.undo_operation($1,$2,$3)',[randomUUID(),hash('unsafe undo'),correction.operationId]),/package_undo_requires_correction/);
+assert.equal((await snapshot()).studentPackages[0].used,1,'old undo cannot reinterpret package history');
+s=(await query('select * from public.sessions where id=$1',[s.id]))[0];
+await attend(today,'present',s);
+assert.equal((await snapshot()).studentPackages[0].used,2,'corrected attendance reuses available class');
+await assert.rejects(()=>rpc({type:'createPackage',definition:{name:'Invalid pack',description:'',kind:'class_pack',classCount:null,priceCents:5000,validityWeeks:4,archived:false}}),/check constraint/);
+await rpc({type:'adjustBalance',studentId:sid,deltaCents:-1000,reason:'Synthetic correction'});
+assert.equal((await snapshot()).adjustments.reduce((n,a)=>n+a.amount_cents,0),4000,'immutable signed adjustments');
+await assert.rejects(()=>query('insert into public.ledger_adjustments(owner_id,student_id,entry_date,amount_cents,reason,operation_id) values ($1,$2,current_date,1,\'bad\',$3)',[owner,sid,randomUUID()]),/permission denied/);
+const countBefore=(await query('select count(*)::int as n from public.sessions'))[0].n;
+await assert.rejects(()=>rpc({type:'attendance',date:'2026-10-05',entries:[{studentId:sid,mark:'present',sessionId:null,expectedVersion:null},{studentId:randomUUID(),mark:'present',sessionId:null,expectedVersion:null}]}),/student_not_found/);
+assert.equal((await query('select count(*)::int as n from public.sessions'))[0].n,countBefore,'batch rolls back completely');
+await rpc({type:'saveSchedule',title:'Gym class',weekday:2,start:'19:00',end:'20:30',expectedVersion:0});
+await assert.rejects(()=>rpc({type:'saveSchedule',title:'Stale',weekday:2,start:'19:00',end:'20:30',expectedVersion:0}),/stale_operation/);
+assert.equal((await snapshot()).schedule.title,'Gym class');
+await db.query("select set_config('request.jwt.claim.sub',$1,false)",[other]);
+assert.equal((await snapshot()).packages.length,0,'RLS isolates catalogue');
+assert.equal((await snapshot()).studentPackages.length,0,'RLS isolates assignments');
+await assert.rejects(()=>rpc(assignment),/student_not_found/);
+await db.exec('reset role; set role anon');
+await assert.rejects(()=>snapshot(),/permission denied/);
+console.log('PASS: all migrations; persistence, package consumption/exhaustion, legacy correction, atomic rollback, idempotency, schedule versions, direct-write denial and owner isolation.');
+await db.close();

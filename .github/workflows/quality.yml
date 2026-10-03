@@ -48,6 +48,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Verify migrations and ledger accounting in disposable PostgreSQL
+        run: pnpm test:database
+
       - name: Build
         run: pnpm build
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { readAll } from "./read-all";
 
 import {
   balanceState,
@@ -169,10 +170,10 @@ export async function loadLedgerDashboard(
 
   const [studentsResult, sessionsResult, paymentsResult, templatesResult, auditResult, reviewsResult] =
     await Promise.all([
-      supabase.from("students").select("*").eq("owner_id", user.id).order("name"),
-      supabase.from("sessions").select("*").eq("owner_id", user.id).order("session_date", { ascending: false }),
-      supabase.from("payments").select("*").eq("owner_id", user.id).order("payment_date", { ascending: false }),
-      supabase.from("recurring_session_templates").select("*").eq("owner_id", user.id).order("starts_on"),
+      readAll((from,to) => supabase.from("students").select("*").eq("owner_id", user.id).order("name").order("id").range(from,to)),
+      readAll((from,to) => supabase.from("sessions").select("*").eq("owner_id", user.id).order("session_date", { ascending: false }).order("id").range(from,to)),
+      readAll((from,to) => supabase.from("payments").select("*").eq("owner_id", user.id).order("payment_date", { ascending: false }).order("id").range(from,to)),
+      readAll((from,to) => supabase.from("recurring_session_templates").select("*").eq("owner_id", user.id).order("starts_on").order("id").range(from,to)),
       supabase.from("audit_events").select("*").eq("owner_id", user.id).order("occurred_at", { ascending: false }).limit(auditLimit),
       supabase.from("daily_reviews").select("*").eq("owner_id", user.id).order("review_date", { ascending: false }),
     ]);
