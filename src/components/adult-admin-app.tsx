@@ -199,6 +199,23 @@ function formatElapsed(ms: number) {
   return `${Math.floor(minutes / 60)}h ago`;
 }
 
+/** The floating sticky-action button fades out while the page is actively
+ * scrolling so it doesn't obscure list content passing underneath it. */
+function useIsScrolling() {
+  const [scrolling, setScrolling] = useState(false);
+  useEffect(() => {
+    let timeout: number;
+    function onScroll() {
+      setScrolling(true);
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => setScrolling(false), 200);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); window.clearTimeout(timeout); };
+  }, []);
+  return scrolling;
+}
+
 export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "today", initialActivityTab = "timeline", initialTimelineFilters = {} }: { data?: AdultAdminReadModel; initialView?: View; initialActivityTab?: "timeline" | "day" | "audit"; initialTimelineFilters?: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string } }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
@@ -650,6 +667,7 @@ function Balance({ student }: { student: StudentReadModel }) { return <span clas
 function Status({ value }: { value: SessionStatus | null }) { return <span className={`status ${(value ?? "unscheduled").replace("_", "")}`}>{statusLabel(value)}</span>; }
 
 function Today({ data, online, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue, onTemplates, onActivity, onInactive }: { data: AdultAdminReadModel; online: boolean; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void; onTemplates: () => void; onActivity: (type: string) => void; onInactive: () => void }) {
+  const scrolling = useIsScrolling();
   const overdueCount = data.students.filter((student) => student.balanceState === "overdue").length;
   const scheduledCount = data.students.filter((student) => student.todaySessionStatus === "scheduled").length;
   const heldCount = data.students.filter((student) => student.todaySessionStatus === "held").length;
@@ -661,7 +679,7 @@ function Today({ data, online, onBulk, onPay, onSession, onView, onAddStudent, o
       {data.students.length ? <div className="student-list">{data.students.map((student) => <article className="student-row" key={student.id}><button className="student-open" onClick={() => onView(student)} aria-label={`View ${student.name}`}><span className="avatar" aria-hidden="true">{student.name.split(" ").map((part) => part[0]).join("")}</span><span className="student-copy"><strong>{student.name}</strong><Balance student={student} /></span></button><button className="quick-pay" onClick={() => onPay(student.id)} aria-label={`Record payment for ${student.name}`}>Pay</button><Status value={student.todaySessionStatus} /></article>)}</div> : <EmptyLedger onAdd={onAddStudent} />}
     </section>
     <section className="section recent"><div className="section-title"><h2>Recent activity</h2></div>{data.activities.length ? data.activities.slice(0, 3).map((activity) => <div className="activity-row" key={activity.id}><span className="activity-icon">✓</span><span>{activity.label}<small>{activity.occurredAtLabel}</small></span></div>) : <div className="empty"><b>No activity yet</b><p>Attendance and payments will appear here after you log them.</p></div>}</section>
-    <div className="sticky-action">{!online && <p className="offline-hint">Reconnect to mark attendance</p>}<button className="primary" disabled={!online || !data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> {online ? "Mark attendance" : "Mark attendance — offline"}</button></div></>;
+    <div className={`sticky-action ${scrolling ? "is-scrolling" : ""}`}>{!online && <p className="offline-hint">Reconnect to mark attendance</p>}<button className="primary" disabled={!online || !data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> {online ? "Mark attendance" : "Mark attendance — offline"}</button></div></>;
 }
 
 const SETUP_DISMISSAL_KEY = "chalktab:setup:v1:dismissed";
@@ -727,6 +745,7 @@ function AuditLog({ events, filters, navigate }: { events: AuditEventReadModel[]
 }
 
 function Activity({ data, initialTab, initialFilters, onNavigate, onDateChange, onEntry, onReview, onResolve, isPending }: { data: AdultAdminReadModel; initialTab: "timeline" | "day" | "audit"; initialFilters: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string }; onNavigate: (params: URLSearchParams) => void; onDateChange: (date: string) => void; onEntry: (entry: StudentHistoryEntryReadModel) => void; onReview: () => void; onResolve: () => void; isPending: boolean }) {
+  const scrolling = useIsScrolling();
   const review = data.review;
   function navigate(updates: Record<string, string>) {
     const params = new URLSearchParams({ view: "activity", tab: initialTab, ...Object.fromEntries(Object.entries(initialFilters).filter(([, value]) => value)) as Record<string, string>, ...updates });
@@ -750,7 +769,7 @@ function Activity({ data, initialTab, initialFilters, onNavigate, onDateChange, 
       <section className="metric-grid"><Metric label="Held" value={String(review.heldCount)} /><Metric label="No-show" value={String(review.noShowCount)} /><Metric label="Collected" value={money(review.collectedCents)} accent /><Metric label="Still scheduled" value={String(review.scheduledCount)} /></section>
       <section className="section"><div className="section-title"><div><p className="eyebrow">Daily ledger</p><h2>Entries for this day</h2></div><span className="count">{data.dailyEntries.length}</span></div>{data.dailyEntries.length ? <div className="daily-entry-list">{data.dailyEntries.map((entry) => <button className="daily-entry" key={`${entry.kind}-${entry.id}`} onClick={() => onEntry(entry.entry)}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><span><b>{entry.studentName}</b><span>{entry.label}</span><small>{entry.detail}</small></span><span aria-hidden="true">›</span></button>)}</div> : <div className="empty compact-empty"><b>No entries for this date</b><p>Use the date controls to review another day.</p></div>}</section>
       {review.scheduledCount > 0 && <section className="section"><div className="warning"><b>{review.scheduledCount} sessions still scheduled</b><p>Confirm attendance or update status before wrapping up.</p><button onClick={onResolve}>Resolve on Today →</button></div></section>}
-      <div className="sticky-action"><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div>
+      <div className={`sticky-action ${scrolling ? "is-scrolling" : ""}`}><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div>
     </>}
   </>;
 }
