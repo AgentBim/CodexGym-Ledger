@@ -25,6 +25,7 @@ vi.mock("../actions/ledger", () => ({
 const data: AdultAdminReadModel = {
   todayDate: "2026-07-31",
   todayLabel: "Friday, 31 July",
+  ownerEmail: "owner@example.com",
   students: [
     { id: "11111111-1111-4111-8111-111111111111", name: "Asha Clarke", balanceCents: 6000, balanceState: "overdue", todaySessionStatus: "scheduled", todaySessionId: "aaaaaaaa-1111-4111-8111-111111111111", todaySessionVersion: 3, lastAttendedOn: "24 Jul", defaultRateCents: 3000, notes: "Evening class", version: 2, history: [
       { id: "payment-history", kind: "payment", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false },

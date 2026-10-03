@@ -54,6 +54,7 @@ export function toAdultAdminReadModel(dashboard: LedgerDashboard): AdultAdminRea
   return {
     todayDate: dashboard.today,
     todayLabel: dateLabel(dashboard.today, { weekday: "long", day: "numeric", month: "long" }),
+    ownerEmail: dashboard.user.email,
     students: dashboard.studentSummaries.map((student) => ({
       id: student.id,
       name: student.name,
