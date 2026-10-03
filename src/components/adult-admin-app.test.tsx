@@ -25,6 +25,7 @@ vi.mock("../actions/ledger", () => ({
 const data: AdultAdminReadModel = {
   todayDate: "2026-07-31",
   todayLabel: "Friday, 31 July",
+  ownerEmail: "owner@example.com",
   students: [
     { id: "11111111-1111-4111-8111-111111111111", name: "Asha Clarke", balanceCents: 6000, balanceState: "overdue", todaySessionStatus: "scheduled", todaySessionId: "aaaaaaaa-1111-4111-8111-111111111111", todaySessionVersion: 3, lastAttendedOn: "24 Jul", defaultRateCents: 3000, notes: "Evening class", version: 2, history: [
       { id: "payment-history", kind: "payment", dateLabel: "31 Jul 2026", label: "BBD $30.00 payment", detail: "Cash", voided: false },
@@ -80,6 +81,15 @@ describe("AdultAdminApp", () => {
     expect(screen.getByRole("dialog", { name: /mark attendance/i })).toBeInTheDocument();
     expect(screen.getByText(/already held · no change/i)).toBeInTheDocument();
     expect(screen.getByText(/canceled · review separately/i)).toBeInTheDocument();
+  });
+
+  it("shows a persistent offline banner and disables bulk attendance while offline", () => {
+    Object.defineProperty(window.navigator, "onLine", { value: false, configurable: true });
+    render(<AdultAdminApp data={data} />);
+    expect(screen.getByText("Offline — changes will sync later")).toBeInTheDocument();
+    expect(screen.getByText(/you.re offline/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /mark attendance — offline/i })).toBeDisabled();
+    Object.defineProperty(window.navigator, "onLine", { value: true, configurable: true });
   });
 
   it("labels credit and overdue balances without relying on color", () => {
@@ -290,6 +300,26 @@ describe("AdultAdminApp", () => {
       studentId: data.students[1]!.id,
       amountCents: 2500,
     })));
+  });
+
+  it("filters the roster with multi-select balance chips", () => {
+    render(<AdultAdminApp data={data} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Students" })[0]!);
+    expect(screen.getByText("3 active students")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Overdue" }));
+    expect(screen.getByRole("button", { name: /show 1 results/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Credit" }));
+    expect(screen.getByRole("button", { name: /show 2 results/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /show 2 results/i }));
+
+    expect(screen.getByText("2 active students")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filters (2)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(screen.getByText("3 active students")).toBeInTheDocument();
   });
 
   it("shows archived students separately and restores them without deleting history", async () => {

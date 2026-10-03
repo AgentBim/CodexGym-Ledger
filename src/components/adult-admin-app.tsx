@@ -119,6 +119,7 @@ export type AdultAdminReadModel = {
   auditLog: AuditEventReadModel[];
   dailyEntries: DailyEntryReadModel[];
   templates: TemplateReadModel[];
+  ownerEmail: string | null;
   setup: { student: boolean; template: boolean; attendance: boolean; payment: boolean };
   insights: { unresolvedSessions: number; recentPayments: number; upcomingClasses: number; inactiveStudents: number };
   review: {
@@ -147,6 +148,7 @@ export const EMPTY_ADULT_ADMIN_DATA: AdultAdminReadModel = {
   auditLog: [],
   dailyEntries: [],
   templates: [],
+  ownerEmail: null,
   setup: { student: false, template: false, attendance: false, payment: false },
   insights: { unresolvedSessions: 0, recentPayments: 0, upcomingClasses: 0, inactiveStudents: 0 },
   review: { date: "", reviewed: false, heldCount: 0, noShowCount: 0, collectedCents: 0, scheduledCount: 0 },
@@ -181,6 +183,41 @@ function shiftDate(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function useIsOnline() {
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  useEffect(() => {
+    function update() { setOnline(navigator.onLine); }
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
+  }, []);
+  return online;
+}
+
+function formatElapsed(ms: number) {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
+/** The floating sticky-action button fades out while the page is actively
+ * scrolling so it doesn't obscure list content passing underneath it. */
+function useIsScrolling() {
+  const [scrolling, setScrolling] = useState(false);
+  useEffect(() => {
+    let timeout: number;
+    function onScroll() {
+      setScrolling(true);
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => setScrolling(false), 200);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); window.clearTimeout(timeout); };
+  }, []);
+  return scrolling;
+}
+
 export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "today", initialActivityTab = "timeline", initialTimelineFilters = {} }: { data?: AdultAdminReadModel; initialView?: View; initialActivityTab?: "timeline" | "day" | "audit"; initialTimelineFilters?: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string } }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
@@ -189,7 +226,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const [editingTemplate, setEditingTemplate] = useState<TemplateReadModel | null>(null);
   const [editingEntry, setEditingEntry] = useState<StudentHistoryEntryReadModel | null>(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | BalanceState>("all");
+  const [filter, setFilter] = useState<BalanceState[]>([]);
   const [rosterStatus, setRosterStatus] = useState<"active" | "archived">("active");
   const [paymentStudentId, setPaymentStudentId] = useState<string | null>(null);
   const [sessionStudentId, setSessionStudentId] = useState<string | null>(null);
@@ -219,8 +256,22 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const activeStudents = useMemo(() => data.students.filter((student) => !student.archived), [data.students]);
-  const filtered = useMemo(() => data.students.filter((student) => Boolean(student.archived) === (rosterStatus === "archived") && student.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || student.balanceState === filter)), [data.students, filter, query, rosterStatus]);
+  const filtered = useMemo(() => data.students.filter((student) => Boolean(student.archived) === (rosterStatus === "archived") && student.name.toLowerCase().includes(query.toLowerCase()) && (filter.length === 0 || filter.includes(student.balanceState))), [data.students, filter, query, rosterStatus]);
   const quickActionStudent = data.students.find((student) => student.id === quickActionStudentId) ?? null;
+  const online = useIsOnline();
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  const isFirstDataRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstDataRender.current) { isFirstDataRender.current = false; return; }
+    setLastSyncedAt(Date.now());
+  }, [data]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!undo) return;
@@ -277,7 +328,7 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
 
   function showOverdueStudents() {
     setRosterStatus("active");
-    setFilter("overdue");
+    setFilter(["overdue"]);
     setQuery("");
     navigateView("students");
   }
@@ -584,13 +635,14 @@ export function AdultAdminApp({ data = EMPTY_ADULT_ADMIN_DATA, initialView = "to
     <div className="app-frame" aria-busy={isPending}>
       <aside className="side-nav" aria-label="Primary navigation"><Brand />{navItems.map((item) => <NavButton key={item.id} item={item} view={view} onNavigate={navigateView} />)}</aside>
       <div className="app-content">
-        <header className="topbar"><Brand /><span className="save-state"><i /> {isPending ? "Saving…" : "All changes saved"}</span></header>
+        <header className="topbar"><Brand /><span className={`save-state ${!online ? "offline" : ""}`}><i /> {!online ? "Offline — changes will sync later" : isPending ? "Saving…" : `All changes saved · ${formatElapsed(now - lastSyncedAt)}`}</span></header>
+        {!online && <div className="offline-banner" role="status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 8.5c5-4 13-4 18 0M6.2 12c3.6-2.7 8-2.7 11.6 0M9.5 15.5c1.8-1.3 3.2-1.3 5 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="19" r="1.1" fill="currentColor" /></svg><span>You&rsquo;re offline — entries can&rsquo;t be saved until your connection comes back.</span></div>}
         <main id="main-content" className="main-content">
           {notice && <div className="review-state app-notice" role="status"><span aria-hidden="true">!</span><div><b>{notice}</b></div><button className="text-button" onClick={() => setNotice(null)}>Dismiss</button></div>}
-          {view === "today" && <Today data={{ ...data, students: activeStudents }} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/ledger-tools?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
+          {view === "today" && <Today data={{ ...data, students: activeStudents }} online={online} onBulk={openBulk} onPay={openPayment} onSession={() => openSession()} onView={openQuickAction} onAddStudent={() => openStudent()} onShowOverdue={showOverdueStudents} onTemplates={() => navigateView("more")} onActivity={(type) => { setView("activity"); router.push(`/ledger-tools?view=activity&tab=timeline&type=${type}`); }} onInactive={() => { setRosterStatus("active"); navigateView("students"); }} />}
           {view === "students" && <Students students={filtered} activeCount={activeStudents.length} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} rosterStatus={rosterStatus} setRosterStatus={setRosterStatus} onPay={openPayment} onAdd={() => openStudent()} onEdit={openStudent} onView={viewStudent} />}
           {view === "activity" && <Activity data={data} initialTab={initialActivityTab} initialFilters={initialTimelineFilters} onNavigate={(params) => router.push(`/ledger-tools?${params.toString()}`)} onDateChange={(date) => router.push(`/ledger-tools?view=activity&tab=day&date=${date}`)} onEntry={openEntry} onReview={markReviewed} onResolve={() => navigateView("today")} isPending={isPending} />}
-          {view === "more" && <Templates templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} />}
+          {view === "more" && <Templates ownerEmail={data.ownerEmail} templates={data.templates} canCreate={activeStudents.length > 0} onAdd={() => { setEditingTemplate(null); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} onEdit={(template) => { setEditingTemplate(template); setTemplateIdempotencyKey(freshIdempotencyKey()); setModal("template"); }} />}
         </main>
         <nav className="bottom-nav" aria-label="Primary navigation">{navItems.map((item) => <NavButton key={item.id} item={item} view={view} onNavigate={navigateView} />)}</nav>
       </div>
@@ -616,7 +668,8 @@ function PageHeading({ eyebrow, title, children }: { eyebrow: string; title: str
 function Balance({ student }: { student: StudentReadModel }) { return <span className={`balance ${student.balanceState}`}><span aria-hidden="true">{student.balanceState === "overdue" ? "▲" : student.balanceState === "credit" ? "↓" : student.balanceState === "settled" ? "✓" : "○"}</span>{balanceLabel(student)}</span>; }
 function Status({ value }: { value: SessionStatus | null }) { return <span className={`status ${(value ?? "unscheduled").replace("_", "")}`}>{statusLabel(value)}</span>; }
 
-function Today({ data, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue, onTemplates, onActivity, onInactive }: { data: AdultAdminReadModel; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void; onTemplates: () => void; onActivity: (type: string) => void; onInactive: () => void }) {
+function Today({ data, online, onBulk, onPay, onSession, onView, onAddStudent, onShowOverdue, onTemplates, onActivity, onInactive }: { data: AdultAdminReadModel; online: boolean; onBulk: () => void; onPay: (studentId?: string) => void; onSession: () => void; onView: (student: StudentReadModel) => void; onAddStudent: () => void; onShowOverdue: () => void; onTemplates: () => void; onActivity: (type: string) => void; onInactive: () => void }) {
+  const scrolling = useIsScrolling();
   const overdueCount = data.students.filter((student) => student.balanceState === "overdue").length;
   const scheduledCount = data.students.filter((student) => student.todaySessionStatus === "scheduled").length;
   const heldCount = data.students.filter((student) => student.todaySessionStatus === "held").length;
@@ -628,7 +681,7 @@ function Today({ data, onBulk, onPay, onSession, onView, onAddStudent, onShowOve
       {data.students.length ? <div className="student-list">{data.students.map((student) => <article className="student-row" key={student.id}><button className="student-open" onClick={() => onView(student)} aria-label={`View ${student.name}`}><span className="avatar" aria-hidden="true">{student.name.split(" ").map((part) => part[0]).join("")}</span><span className="student-copy"><strong>{student.name}</strong><Balance student={student} /></span></button><button className="quick-pay" onClick={() => onPay(student.id)} aria-label={`Record payment for ${student.name}`}>Pay</button><Status value={student.todaySessionStatus} /></article>)}</div> : <EmptyLedger onAdd={onAddStudent} />}
     </section>
     <section className="section recent"><div className="section-title"><h2>Recent activity</h2></div>{data.activities.length ? data.activities.slice(0, 3).map((activity) => <div className="activity-row" key={activity.id}><span className="activity-icon">✓</span><span>{activity.label}<small>{activity.occurredAtLabel}</small></span></div>) : <div className="empty"><b>No activity yet</b><p>Attendance and payments will appear here after you log them.</p></div>}</section>
-    <div className="sticky-action"><button className="primary" disabled={!data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> Mark attendance</button></div></>;
+    <div className={`sticky-action ${scrolling ? "is-scrolling" : ""}`}>{!online && <p className="offline-hint">Reconnect to mark attendance</p>}<button className="primary" disabled={!online || !data.students.length || !data.todayDate} onClick={onBulk}><span aria-hidden="true">✓</span> {online ? "Mark attendance" : "Mark attendance — offline"}</button></div></>;
 }
 
 const SETUP_DISMISSAL_KEY = "chalktab:setup:v1:dismissed";
@@ -649,9 +702,30 @@ function SetupChecklist({ setup, onAddStudent, onTemplates, onAttendance, onPaym
 
 function EmptyLedger({ onAdd }: { onAdd: () => void }) { return <div className="empty"><b>Your ledger is ready</b><p>Add your first student to start tracking attendance and payments. No demo records have been added.</p><button className="primary compact" onClick={onAdd}>Add first student</button></div>; }
 
-function Students({ students, activeCount, query, setQuery, filter, setFilter, rosterStatus, setRosterStatus, onPay, onAdd, onEdit, onView }: { students: StudentReadModel[]; activeCount: number; query: string; setQuery: (value: string) => void; filter: "all" | BalanceState; setFilter: (value: "all" | BalanceState) => void; rosterStatus: "active" | "archived"; setRosterStatus: (value: "active" | "archived") => void; onPay: (studentId: string) => void; onAdd: () => void; onEdit: (student: StudentReadModel) => void; onView: (student: StudentReadModel) => void }) {
+const balanceFilterOptions: { value: BalanceState; label: string }[] = [
+  { value: "overdue", label: "Overdue" },
+  { value: "owed", label: "Owes" },
+  { value: "settled", label: "Settled" },
+  { value: "credit", label: "Credit" },
+];
+
+function Students({ students, activeCount, query, setQuery, filter, setFilter, rosterStatus, setRosterStatus, onPay, onAdd, onEdit, onView }: { students: StudentReadModel[]; activeCount: number; query: string; setQuery: (value: string) => void; filter: BalanceState[]; setFilter: (value: BalanceState[]) => void; rosterStatus: "active" | "archived"; setRosterStatus: (value: "active" | "archived") => void; onPay: (studentId: string) => void; onAdd: () => void; onEdit: (student: StudentReadModel) => void; onView: (student: StudentReadModel) => void }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const activeRosterEmpty = rosterStatus === "active" && activeCount === 0;
-  return <><PageHeading eyebrow="Roster" title="Students"><button className="primary compact" onClick={onAdd}>+ Add student</button></PageHeading><div className="roster-tabs" role="group" aria-label="Roster status"><button className={rosterStatus === "active" ? "active" : ""} aria-pressed={rosterStatus === "active"} onClick={() => setRosterStatus("active")}>Active</button><button className={rosterStatus === "archived" ? "active" : ""} aria-pressed={rosterStatus === "archived"} onClick={() => setRosterStatus("archived")}>Archived</button></div><div className="search-row"><label className="search"><span>⌕</span><span className="sr-only">Search students</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name" /></label><select aria-label="Filter by balance" value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">All balances</option><option value="overdue">Overdue</option><option value="owed">Owes</option><option value="settled">Settled</option><option value="credit">Credit</option></select></div><p className="result-count">{students.length} {rosterStatus} students</p><div className="student-grid">{students.map((student) => <article className="profile-card" key={student.id}><div className="avatar">{student.name[0]}</div><div><h2>{student.name}</h2><Balance student={student} /><p>{student.archived ? "Archived · history preserved" : student.lastAttendedOn ? `Last attended ${student.lastAttendedOn}` : "No attendance yet"}</p></div><div className="card-actions"><button className="secondary" onClick={() => onView(student)}>View</button><details className="overflow-menu"><summary aria-label={`More actions for ${student.name}`}>•••</summary><div>{!student.archived && <button onClick={() => onPay(student.id)}>Record payment</button>}<button onClick={() => onEdit(student)}>{student.archived ? "Restore student" : "Manage student"}</button></div></details></div></article>)}</div>{students.length === 0 && <div className="empty"><b>{activeRosterEmpty ? "No active students yet" : rosterStatus === "archived" ? "No archived students" : "No matching students"}</b><p>{activeRosterEmpty ? "Add your first student to begin. The app never inserts demo students automatically." : rosterStatus === "archived" ? "Archived students will appear here with their history and balances preserved." : "Try clearing your search or balance filter."}</p>{activeRosterEmpty && <button className="primary compact" onClick={onAdd}>Add first student</button>}</div>}</>;
+  const hasFilters = query.length > 0 || filter.length > 0;
+  function toggleFilter(value: BalanceState) {
+    setFilter(filter.includes(value) ? filter.filter((item) => item !== value) : [...filter, value]);
+  }
+  function clearFilters() { setQuery(""); setFilter([]); }
+  return <><PageHeading eyebrow="Roster" title="Students"><button className="primary compact" onClick={onAdd}>+ Add student</button></PageHeading><div className="roster-tabs" role="group" aria-label="Roster status"><button className={rosterStatus === "active" ? "active" : ""} aria-pressed={rosterStatus === "active"} onClick={() => setRosterStatus("active")}>Active</button><button className={rosterStatus === "archived" ? "active" : ""} aria-pressed={rosterStatus === "archived"} onClick={() => setRosterStatus("archived")}>Archived</button></div><div className="search-row"><label className="search"><span>⌕</span><span className="sr-only">Search students</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name" /></label><button type="button" className="secondary compact" onClick={() => setFiltersOpen(true)}>Filters{filter.length > 0 ? ` (${filter.length})` : ""}</button></div><p className="result-count">{students.length} {rosterStatus} students</p><div className="student-grid">{students.map((student) => <article className="profile-card" key={student.id}><div className="avatar">{student.name[0]}</div><div><h2>{student.name}</h2><Balance student={student} /><p>{student.archived ? "Archived · history preserved" : student.lastAttendedOn ? `Last attended ${student.lastAttendedOn}` : "No attendance yet"}</p></div><div className="card-actions"><button className="secondary" onClick={() => onView(student)}>View</button><details className="overflow-menu"><summary aria-label={`More actions for ${student.name}`}>•••</summary><div>{!student.archived && <button onClick={() => onPay(student.id)}>Record payment</button>}<button onClick={() => onEdit(student)}>{student.archived ? "Restore student" : "Manage student"}</button></div></details></div></article>)}</div>{students.length === 0 && <div className="empty"><b>{activeRosterEmpty ? "No active students yet" : rosterStatus === "archived" ? "No archived students" : "No matching students"}</b><p>{activeRosterEmpty ? "Add your first student to begin. The app never inserts demo students automatically." : rosterStatus === "archived" ? "Archived students will appear here with their history and balances preserved." : "Try clearing your search or balance filter."}</p>{activeRosterEmpty && <button className="primary compact" onClick={onAdd}>Add first student</button>}{!activeRosterEmpty && rosterStatus === "active" && hasFilters && <button className="secondary compact" onClick={clearFilters}>Clear filters</button>}</div>}
+    {filtersOpen && <DialogShell title="Filters" description="Narrow the roster by balance status." onClose={() => setFiltersOpen(false)}>
+      <div className="filter-chip-group">
+        <p className="filter-chip-label">Balance status</p>
+        <div className="filter-chips">{balanceFilterOptions.map((option) => <button key={option.value} type="button" className={`filter-chip ${filter.includes(option.value) ? "active" : ""}`} aria-pressed={filter.includes(option.value)} onClick={() => toggleFilter(option.value)}>{option.label}</button>)}</div>
+      </div>
+      <div className="sheet-actions"><button type="button" className="secondary" onClick={() => setFilter([])}>Clear all</button><button type="button" className="primary" onClick={() => setFiltersOpen(false)}>Show {students.length} results</button></div>
+    </DialogShell>}
+  </>;
 }
 
 function friendlyAuditLabel(value: string) {
@@ -694,6 +768,7 @@ function AuditLog({ events, filters, navigate }: { events: AuditEventReadModel[]
 }
 
 function Activity({ data, initialTab, initialFilters, onNavigate, onDateChange, onEntry, onReview, onResolve, isPending }: { data: AdultAdminReadModel; initialTab: "timeline" | "day" | "audit"; initialFilters: { student?: string; type?: string; entity?: string; action?: string; from?: string; to?: string }; onNavigate: (params: URLSearchParams) => void; onDateChange: (date: string) => void; onEntry: (entry: StudentHistoryEntryReadModel) => void; onReview: () => void; onResolve: () => void; isPending: boolean }) {
+  const scrolling = useIsScrolling();
   const review = data.review;
   function navigate(updates: Record<string, string>) {
     const params = new URLSearchParams({ view: "activity", tab: initialTab, ...Object.fromEntries(Object.entries(initialFilters).filter(([, value]) => value)) as Record<string, string>, ...updates });
@@ -717,13 +792,13 @@ function Activity({ data, initialTab, initialFilters, onNavigate, onDateChange, 
       <section className="metric-grid"><Metric label="Held" value={String(review.heldCount)} /><Metric label="No-show" value={String(review.noShowCount)} /><Metric label="Collected" value={money(review.collectedCents)} accent /><Metric label="Still scheduled" value={String(review.scheduledCount)} /></section>
       <section className="section"><div className="section-title"><div><p className="eyebrow">Daily ledger</p><h2>Entries for this day</h2></div><span className="count">{data.dailyEntries.length}</span></div>{data.dailyEntries.length ? <div className="daily-entry-list">{data.dailyEntries.map((entry) => <button className="daily-entry" key={`${entry.kind}-${entry.id}`} onClick={() => onEntry(entry.entry)}><span className={`entry-kind ${entry.kind}`} aria-hidden="true">{entry.kind === "payment" ? "$" : "✓"}</span><span><b>{entry.studentName}</b><span>{entry.label}</span><small>{entry.detail}</small></span><span aria-hidden="true">›</span></button>)}</div> : <div className="empty compact-empty"><b>No entries for this date</b><p>Use the date controls to review another day.</p></div>}</section>
       {review.scheduledCount > 0 && <section className="section"><div className="warning"><b>{review.scheduledCount} sessions still scheduled</b><p>Confirm attendance or update status before wrapping up.</p><button onClick={onResolve}>Resolve on Today →</button></div></section>}
-      <div className="sticky-action"><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div>
+      <div className={`sticky-action ${scrolling ? "is-scrolling" : ""}`}><button className="primary" disabled={isPending || !review.date || review.scheduledCount > 0} onClick={onReview}>{review.reviewed ? "Review again" : "Mark day reviewed"}</button></div>
     </>}
   </>;
 }
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) { return <div className={`metric ${accent ? "accent" : ""}`}><small>{label}</small><strong>{value}</strong></div>; }
 
-function Templates({ templates, canCreate, onAdd, onEdit }: { templates: TemplateReadModel[]; canCreate: boolean; onAdd: () => void; onEdit: (template: TemplateReadModel) => void }) { return <><PageHeading eyebrow="Settings and planning" title="More" /><section><div className="section-title"><div><p className="eyebrow">Planning</p><h2>Recurring classes</h2></div><button className="primary compact" disabled={!canCreate} title={canCreate ? undefined : "Add a student first"} onClick={onAdd}>+ New template</button></div><p className="lede">Weekly classes generate scheduled sessions ahead of time.</p>{templates.length ? <div className="template-list">{templates.map((template) => <article className="template-card" key={template.id}><span className="calendar-icon">{template.weekdayLabel.slice(0, 3)}</span><div><h2>{template.studentName}</h2><p>{template.weekdayLabel}{template.nextSessionOn ? ` · Next ${template.nextSessionOn}` : ""}</p><span className={`status ${template.paused ? "canceled" : "held"}`}>{template.paused ? "Paused" : "Active"}</span></div><button className="secondary compact" onClick={() => onEdit(template)} aria-label={`Manage recurring class for ${template.studentName}`}>Manage</button></article>)}</div> : <div className="empty"><b>No recurring classes</b><p>{canCreate ? "Create a weekly template to schedule upcoming sessions." : "Add a student before creating a recurring class."}</p>{canCreate && <button className="primary compact" onClick={onAdd}>Create template</button>}</div>}</section><form action={signOut} className="section"><button className="secondary" type="submit">Sign out</button></form></>;
+function Templates({ ownerEmail, templates, canCreate, onAdd, onEdit }: { ownerEmail: string | null; templates: TemplateReadModel[]; canCreate: boolean; onAdd: () => void; onEdit: (template: TemplateReadModel) => void }) { return <><PageHeading eyebrow="Settings and planning" title="More" /><section className="profile-card owner-card"><div className="avatar">{(ownerEmail ?? "C")[0]!.toUpperCase()}</div><div><h2>{ownerEmail ?? "Coach"}</h2><p>Signed in</p></div></section><section><div className="section-title"><div><p className="eyebrow">Planning</p><h2>Recurring classes</h2></div><button className="primary compact" disabled={!canCreate} title={canCreate ? undefined : "Add a student first"} onClick={onAdd}>+ New template</button></div><p className="lede">Weekly classes generate scheduled sessions ahead of time.</p>{templates.length ? <div className="template-list">{templates.map((template) => <article className="template-card" key={template.id}><span className="calendar-icon">{template.weekdayLabel.slice(0, 3)}</span><div><h2>{template.studentName}</h2><p>{template.weekdayLabel}{template.nextSessionOn ? ` · Next ${template.nextSessionOn}` : ""}</p><span className={`status ${template.paused ? "canceled" : "held"}`}>{template.paused ? "Paused" : "Active"}</span></div><button className="secondary compact" onClick={() => onEdit(template)} aria-label={`Manage recurring class for ${template.studentName}`}>Manage</button></article>)}</div> : <div className="empty"><b>No recurring classes</b><p>{canCreate ? "Create a weekly template to schedule upcoming sessions." : "Add a student before creating a recurring class."}</p>{canCreate && <button className="primary compact" onClick={onAdd}>Create template</button>}</div>}</section><form action={signOut} className="section"><button className="secondary" type="submit">Sign out</button></form></>;
 }
 
 function DialogShell({ title, description, onClose, children }: { title: string; description: string; onClose: () => void; children: React.ReactNode }) {
