@@ -16,6 +16,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .brand small { color:var(--muted); margin-top:.2rem; }
 .save-state { display:flex; gap:.45rem; align-items:center; font-size:.75rem; color:var(--muted); }
 .save-state i { width:8px; height:8px; border-radius:50%; background:#24a57d; }
+.save-state.offline i { background:var(--muted); }
+.offline-banner { display:flex; align-items:center; gap:.6rem; padding:.7rem 1rem; margin:0 0 .8rem; border-radius:12px; background:var(--warn-tint); color:var(--warn); font-size:.8rem; font-weight:600; line-height:1.4; }
+.offline-hint { margin:0 0 .4rem; text-align:center; font-size:.72rem; color:var(--muted); }
 .side-nav { display:none; }
 .page-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; margin:1.75rem 0 1.2rem; }
 .eyebrow { margin:0 0 .35rem; color:var(--brand); font-size:.72rem; font-weight:850; letter-spacing:.11em; text-transform:uppercase; }

@@ -82,6 +82,15 @@ describe("AdultAdminApp", () => {
     expect(screen.getByText(/canceled · review separately/i)).toBeInTheDocument();
   });
 
+  it("shows a persistent offline banner and disables bulk attendance while offline", () => {
+    Object.defineProperty(window.navigator, "onLine", { value: false, configurable: true });
+    render(<AdultAdminApp data={data} />);
+    expect(screen.getByText("Offline — changes will sync later")).toBeInTheDocument();
+    expect(screen.getByText(/you.re offline/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /mark attendance — offline/i })).toBeDisabled();
+    Object.defineProperty(window.navigator, "onLine", { value: true, configurable: true });
+  });
+
   it("labels credit and overdue balances without relying on color", () => {
     render(<AdultAdminApp data={data} />);
     expect(screen.getByText(/overdue · owes/i)).toBeInTheDocument();
